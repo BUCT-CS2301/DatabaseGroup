@@ -1,21 +1,47 @@
+# ===================
 # IDE 配置
+# ===================
 .idea/
 *.iml
 .vscode/
+*.swp
+*.swo
+*~
 
-# 前端依赖和构建产物
+# ===================
+# 前端
+# ===================
 node_modules/
 dist/
+.env.local
+.env.*.local
 
-# 后端编译产物
+# ===================
+# 后端 (Maven/Gradle)
+# ===================
 target/
+!.mvn/wrapper/maven-wrapper.jar
 *.jar
 *.war
+logs/
+*.log
 
+# ===================
 # 系统文件
+# ===================
 .DS_Store
 Thumbs.db
 
-# 本地环境配置（如果你们有敏感信息，应放模板文件里）
-*.log
-*.env.local
+# ===================
+# Docker (运行时数据不提交)
+# ===================
+docker/volumes/
+
+# 如果需要在 docker-compose 中 mount 本地目录，忽略运行时产生的临时文件
+docker/mysql/data/
+
+# ===================
+# 其他
+# ===================
+*.tmp
+*.bak
