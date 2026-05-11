@@ -1,4 +1,4 @@
-﻿package com.platform.admin.security;
+package com.platform.admin.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;

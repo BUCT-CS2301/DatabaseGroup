@@ -1,4 +1,4 @@
-﻿package com.platform.admin.common;
+package com.platform.admin.common;
 
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
