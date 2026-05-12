@@ -3,8 +3,10 @@ package com.platform.admin.security;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
+
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.Map;
 
 @Component
 public class JwtProvider {
@@ -12,8 +14,13 @@ public class JwtProvider {
     private final long expiration = 7200000L; // 2小时
 
     public String generateToken(String userId) {
+        return generateToken(userId, "MOBILE");
+    }
+
+    public String generateToken(String userId, String userType) {
         return Jwts.builder()
                 .subject(userId)
+                .claims(Map.of("userType", userType))
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(key)
@@ -32,5 +39,18 @@ public class JwtProvider {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public Claims getClaims(String token) {
+        return Jwts.parser().verifyWith(key).build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    /**
+     * Access Token 有效期（秒），与签发逻辑一致。
+     */
+    public long getAccessTokenTtlSeconds() {
+        return expiration / 1000;
     }
 }
