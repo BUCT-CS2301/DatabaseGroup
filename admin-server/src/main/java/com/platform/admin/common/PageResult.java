@@ -1,4 +1,4 @@
-﻿package com.platform.admin.common;
+package com.platform.admin.common;
 
 import java.util.List;
 

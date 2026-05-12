@@ -1,4 +1,4 @@
-﻿package com.platform.admin.common;
+package com.platform.admin.common;
 
 public class Result<T> {
     private int code;
