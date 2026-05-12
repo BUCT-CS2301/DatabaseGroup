@@ -45,3 +45,6 @@ docker/mysql/data/
 # ===================
 *.tmp
 *.bak
+
+# cursor rule file
+.cursor/

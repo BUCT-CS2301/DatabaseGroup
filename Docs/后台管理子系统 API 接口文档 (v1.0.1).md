@@ -1,4 +1,11 @@
-# 后台管理子系统 API 接口文档 (v1.0)
+# 后台管理子系统 API 接口文档 (v1.0.1)
+
+## 文档版本修订
+
+| 版本   | 日期       | 修订说明 |
+| :----- | :--------- | :------- |
+| v1.0.1 | 2026-05-12 | 扩写 **§6.1 文物数据 CRUD**：补充 Query 参数、`RelicObject` 字段模型、基于 `user.user_type` 的读写权限、请求/响应 JSON 示例及软删除语义。 |
+| v1.0.0 | —          | 初版。   |
 
 ## 1. 通用规范
 
@@ -608,14 +615,204 @@ Header 携带 Token。
 
 ### 6.1 文物数据 CRUD
 
-**GET** `/api/v1/data/relics?page=1&pageSize=10&keyword=青铜&categoryId=xxx`
+关系型存储对应数据库表 **`artifact`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4**）；REST 资源集合路径为 **`/api/v1/data/relics`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。
+
+#### 6.1.1 权限
+
+- 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
+- **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
+- **POST** / **PUT** / **DELETE**：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
+
+#### 6.1.2 文物对象 `RelicObject`（与 `artifact` 对齐）
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| objectId | string | 响应必填；创建请求勿传 | UUID v4 |
+| title | string | 是 | 最大长度 **500** 字符 |
+| period | string | 否 | 最大 **200** 字符 |
+| type | string | 否 | 最大 **100** 字符 |
+| material | string | 否 | 最大 **200** 字符 |
+| description | string | 否 | 文本 |
+| dimensions | string | 否 | 最大 **300** 字符 |
+| museumId | string | 否 | 关联 `museum.object_id` |
+| detailUrl | string | 是 | 最大 **1000** 字符 |
+| imageUrl | string | 是 | 最大 **1000** 字符 |
+| imagePath | string | 否 | 最大 **500** 字符 |
+| creditLine | string | 否 | 最大 **500** 字符 |
+| accessionNumber | string | 否 | 最大 **100** 字符 |
+| crawlDate | string | 是 | 日期 **`yyyy-MM-dd`** |
+| createTime | string | 响应必填；创建请求勿传 | **ISO 8601**：`yyyy-MM-ddTHH:mm:ss` |
+| updateTime | string | 否 | **ISO 8601** |
+| isDeleted | number | 否 | **0** 正常，**1** 已软删；创建时默认 **0**；**列表接口不返回** `isDeleted=1` 的记录 |
+
+#### 6.1.3 分页列表
+
+**GET** `/api/v1/data/relics`
+
+**Query 参数**
+
+| 参数      | 类型   | 必填 | 说明 |
+| :-------- | :----- | :--- | :--- |
+| page      | number | 否   | 默认 **1**，最小 **1** |
+| pageSize  | number | 否   | 默认 **10**，最大 **100**；超出时**推荐**按 **100** 截断，或返回 **400**（须在实现与 README 中声明策略） |
+| keyword   | string | 否   | 模糊匹配 **`title`** 或 **`accessionNumber`** |
+| museumId  | string | 否   | 精确匹配 **`museum_id`** |
+
+**Response (200)** — 分页结构见 **§1.4**。
+
+
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "records": [
+      {
+        "objectId": "550e8400-e29b-41d4-a716-446655440001",
+        "title": "青铜鼎",
+        "period": "商代晚期",
+        "type": "青铜器",
+        "material": "青铜",
+        "description": "示例介绍文本。",
+        "dimensions": "高 50cm",
+        "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
+        "detailUrl": "https://museum.example.org/object/12345",
+        "imageUrl": "https://cdn.example.org/relics/12345.jpg",
+        "imagePath": "/data/images/12345.jpg",
+        "creditLine": "Courtesy of Example Museum",
+        "accessionNumber": "1924.123",
+        "crawlDate": "2026-05-01",
+        "createTime": "2026-05-02T10:00:00",
+        "updateTime": "2026-05-10T08:30:00",
+        "isDeleted": 0
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10
+  }
+}
+```
+
+
+
+#### 6.1.4 详情
+
+**GET** `/api/v1/data/relics/{objectId}`
+
+- 路径参数 **`objectId`** 为文物主键。  
+- 资源不存在，或 **`isDeleted=1`**：返回 **404**，`code` **404**，`data` 为 **null**。  
+- 成功时 `data` 为单个 **`RelicObject`**（结构同列表项）。
+
+**Response (200)**
+
+
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "550e8400-e29b-41d4-a716-446655440001",
+    "title": "青铜鼎",
+    "period": "商代晚期",
+    "type": "青铜器",
+    "material": "青铜",
+    "description": "示例介绍文本。",
+    "dimensions": "高 50cm",
+    "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
+    "detailUrl": "https://museum.example.org/object/12345",
+    "imageUrl": "https://cdn.example.org/relics/12345.jpg",
+    "imagePath": null,
+    "creditLine": "Courtesy of Example Museum",
+    "accessionNumber": "1924.123",
+    "crawlDate": "2026-05-01",
+    "createTime": "2026-05-02T10:00:00",
+    "updateTime": "2026-05-10T08:30:00",
+    "isDeleted": 0
+  }
+}
+```
+
+
+
+#### 6.1.5 创建
 
 **POST** `/api/v1/data/relics`
 
+**Request Body**
+
+- 客户端**勿传** `objectId`、`createTime`、`updateTime`（由服务端生成）；`isDeleted` 可不传，默认 **0**。  
+- **必填**：`title`、`detailUrl`、`imageUrl`、`crawlDate`；其余字段按 **§6.1.2** 选填。  
+- 任一字符串超出最大长度：**400**。
+
+
+
+```json
+{
+  "title": "新文物",
+  "period": "唐代",
+  "type": "陶瓷",
+  "material": "瓷",
+  "description": "简介",
+  "dimensions": null,
+  "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
+  "detailUrl": "https://museum.example.org/object/new",
+  "imageUrl": "https://cdn.example.org/relics/new.jpg",
+  "creditLine": null,
+  "accessionNumber": "2026.001",
+  "crawlDate": "2026-05-12"
+}
+```
+
+
+
+**Response (200)**：`data` 为创建后的完整 **`RelicObject`**。
+
+#### 6.1.6 更新
+
 **PUT** `/api/v1/data/relics/{objectId}`
 
+- **Body**：支持**部分字段**更新；未出现的字段保持原值。  
+- 目标 **`objectId`** 不存在，或记录 **`isDeleted=1`**：**404**。  
+- 成功时 **`updateTime`** 由服务端更新；`data` 为更新后的完整 **`RelicObject`**。
+
+**Request Body（示例，仅改标题）**
+
+
+
+```json
+{
+  "title": "青铜鼎（修订）"
+}
+```
+
+
+
+#### 6.1.7 删除（软删除）
+
 **DELETE** `/api/v1/data/relics/{objectId}`
-*请求/响应示例略，均为统一分页或单对象结构。*
+
+- **语义**：**软删除**，将对应行 **`isDeleted` 置为 1**，不物理删除数据。  
+- 目标不存在或 **`isDeleted=1`**：**404**。  
+- 成功：**HTTP 200**，`code` **200**，`data` 固定为：
+
+```json
+{
+  "objectId": "550e8400-e29b-41d4-a716-446655440001",
+  "isDeleted": 1
+}
+```
+
+#### 6.1.8 错误与行为小结
+
+| 场景 | HTTP | code |
+| :--- | :--- | :--- |
+| 未认证 / Token 无效 | 401 | 401 |
+| 写操作且 `user.user_type` ≠ `ADMIN` | 403 | 403 |
+| 参数缺失或超长、非法 `page` / `pageSize`（若实现选择校验而非截断） | 400 | 400 |
+| 详情/更新/删除目标不存在或已软删 | 404 | 404 |
 
 ### 6.2 知识图谱数据 CRUD
 
