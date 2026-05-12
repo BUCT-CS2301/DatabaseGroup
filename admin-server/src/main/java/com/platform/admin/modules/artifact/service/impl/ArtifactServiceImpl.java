@@ -1,5 +1,8 @@
 package com.platform.admin.modules.artifact.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.admin.common.BusinessException;
 import com.platform.admin.common.ErrorCode;
 import com.platform.admin.common.PageResult;
@@ -7,6 +10,7 @@ import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
 import com.platform.admin.modules.artifact.mapper.ArtifactMapper;
+import com.platform.admin.modules.artifact.mapper.RelicAssembler;
 import com.platform.admin.modules.artifact.service.ArtifactService;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
@@ -14,13 +18,12 @@ import com.platform.admin.security.SecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ArtifactServiceImpl implements ArtifactService {
@@ -30,10 +33,11 @@ public class ArtifactServiceImpl implements ArtifactService {
     private static final long MAX_PAGE_SIZE = 100L;
 
     private final SecurityUtil securityUtil;
-    private final Map<String, ArtifactEntity> store = new ConcurrentHashMap<>();
+    private final ArtifactMapper artifactMapper;
 
-    public ArtifactServiceImpl(SecurityUtil securityUtil) {
+    public ArtifactServiceImpl(SecurityUtil securityUtil, ArtifactMapper artifactMapper) {
         this.securityUtil = securityUtil;
+        this.artifactMapper = artifactMapper;
     }
 
     @Override
@@ -41,30 +45,35 @@ public class ArtifactServiceImpl implements ArtifactService {
         long safePage = page <= 0 ? DEFAULT_PAGE : page;
         long safePageSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
 
-        List<RelicVO> filtered = store.values().stream()
-                .filter(item -> item.getIsDeleted() == 0)
-                .filter(item -> keyword == null || keyword.isBlank() || containsKeyword(item, keyword))
-                .filter(item -> museumId == null || museumId.isBlank() || museumId.equals(item.getMuseumId()))
-                .sorted(Comparator.comparing(ArtifactEntity::getCreateTime).reversed())
-                .map(ArtifactMapper::toVO)
-                .toList();
+        LambdaQueryWrapper<ArtifactEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ArtifactEntity::getIsDeleted, 0);
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(ArtifactEntity::getTitle, keyword)
+                    .or().like(ArtifactEntity::getAccessionNumber, keyword));
+        }
+        if (StringUtils.hasText(museumId)) {
+            wrapper.eq(ArtifactEntity::getMuseumId, museumId);
+        }
+        wrapper.orderByDesc(ArtifactEntity::getCreateTime);
 
-        int from = (int) ((safePage - 1) * safePageSize);
-        int to = (int) Math.min(from + safePageSize, filtered.size());
-        List<RelicVO> pageRecords = from >= filtered.size() ? List.of() : filtered.subList(from, to);
+        Page<ArtifactEntity> mpPage = new Page<>(safePage, safePageSize);
+        Page<ArtifactEntity> result = artifactMapper.selectPage(mpPage, wrapper);
+
+        List<RelicVO> records = result.getRecords().stream().map(RelicAssembler::toVO).toList();
         log.info("event=data_relic_list_view page={} pageSize={} hasKeyword={} hasMuseumFilter={}",
-                safePage, safePageSize, keyword != null && !keyword.isBlank(), museumId != null && !museumId.isBlank());
-        return new PageResult<>(pageRecords, filtered.size(), safePage, safePageSize);
+                safePage, safePageSize, StringUtils.hasText(keyword), StringUtils.hasText(museumId));
+        return new PageResult<>(records, result.getTotal(), safePage, safePageSize);
     }
 
     @Override
     public RelicVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
         log.info("event=data_relic_detail_view objectId={}", objectId);
-        return ArtifactMapper.toVO(entity);
+        return RelicAssembler.toVO(entity);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public RelicVO createRelic(CreateRelicRequest request) {
         securityUtil.requireAdminWritePermission();
         if (request.getCrawlDate() == null) {
@@ -91,47 +100,48 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .updateTime(now)
                 .isDeleted(0)
                 .build();
-        store.put(objectId, entity);
+        artifactMapper.insert(entity);
         log.info("event=data_relic_create_success objectId={}", objectId);
-        return ArtifactMapper.toVO(entity);
+        return RelicAssembler.toVO(entity);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public RelicVO updateRelic(String objectId, UpdateRelicRequest request) {
         securityUtil.requireAdminWritePermission();
         ArtifactEntity entity = getNotDeletedById(objectId);
         merge(entity, request);
         entity.setUpdateTime(LocalDateTime.now());
-        store.put(objectId, entity);
+        artifactMapper.updateById(entity);
         log.info("event=data_relic_update_success objectId={}", objectId);
-        return ArtifactMapper.toVO(entity);
+        return RelicAssembler.toVO(entity);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public DeleteRelicVO deleteRelic(String objectId) {
         securityUtil.requireAdminWritePermission();
-        ArtifactEntity entity = getNotDeletedById(objectId);
-        entity.setIsDeleted(1);
-        entity.setUpdateTime(LocalDateTime.now());
-        store.put(objectId, entity);
+        getNotDeletedById(objectId);
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<ArtifactEntity> uw = new LambdaUpdateWrapper<>();
+        uw.eq(ArtifactEntity::getObjectId, objectId)
+                .eq(ArtifactEntity::getIsDeleted, 0)
+                .set(ArtifactEntity::getIsDeleted, 1)
+                .set(ArtifactEntity::getUpdateTime, now);
+        int rows = artifactMapper.update(null, uw);
+        if (rows == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
+        }
         log.info("event=data_relic_delete_success objectId={}", objectId);
         return new DeleteRelicVO(objectId, 1);
     }
 
     private ArtifactEntity getNotDeletedById(String objectId) {
-        ArtifactEntity entity = store.get(objectId);
-        if (entity == null || entity.getIsDeleted() == 1) {
+        ArtifactEntity entity = artifactMapper.selectById(objectId);
+        if (entity == null || entity.getIsDeleted() == null || entity.getIsDeleted() == 1) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
         }
         return entity;
-    }
-
-    private boolean containsKeyword(ArtifactEntity item, String keyword) {
-        String lowerKeyword = keyword.toLowerCase();
-        boolean inTitle = item.getTitle() != null && item.getTitle().toLowerCase().contains(lowerKeyword);
-        boolean inAccession = item.getAccessionNumber() != null
-                && item.getAccessionNumber().toLowerCase().contains(lowerKeyword);
-        return inTitle || inAccession;
     }
 
     private void merge(ArtifactEntity entity, UpdateRelicRequest request) {

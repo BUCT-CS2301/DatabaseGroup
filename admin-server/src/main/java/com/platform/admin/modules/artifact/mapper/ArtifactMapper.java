@@ -1,31 +1,12 @@
 package com.platform.admin.modules.artifact.mapper;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
-import com.platform.admin.modules.artifact.vo.RelicVO;
+import org.apache.ibatis.annotations.Mapper;
 
-public final class ArtifactMapper {
-    private ArtifactMapper() {
-    }
-
-    public static RelicVO toVO(ArtifactEntity entity) {
-        return RelicVO.builder()
-                .objectId(entity.getObjectId())
-                .title(entity.getTitle())
-                .period(entity.getPeriod())
-                .type(entity.getType())
-                .material(entity.getMaterial())
-                .description(entity.getDescription())
-                .dimensions(entity.getDimensions())
-                .museumId(entity.getMuseumId())
-                .detailUrl(entity.getDetailUrl())
-                .imageUrl(entity.getImageUrl())
-                .imagePath(entity.getImagePath())
-                .creditLine(entity.getCreditLine())
-                .accessionNumber(entity.getAccessionNumber())
-                .crawlDate(entity.getCrawlDate())
-                .createTime(entity.getCreateTime())
-                .updateTime(entity.getUpdateTime())
-                .isDeleted(entity.getIsDeleted())
-                .build();
-    }
+/**
+ * 文物表 {@code artifact} 数据访问（MyBatis-Plus）。
+ */
+@Mapper
+public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
 }

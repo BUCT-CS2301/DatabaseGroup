@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.1)
+# 后台管理子系统 API 接口文档 (v1.0.2)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.2 | 2026-05-12 | 新增 **§6.2 博物馆数据 CRUD**：资源路径 **`/api/v1/data/museums`**，补充 **`MuseumObject`** 字段模型、分页/详情/创建/更新/删除及 JSON 示例；权限规则与 **§6.1** 中文物接口一致（GET 任意有效 JWT，写操作仅 **`user.user_type=ADMIN`**）；删除为**物理删除**，响应体 **`{ objectId, deleted }`**。原 **§6.2～§6.4** 顺延为 **§6.3～§6.5**。 |
 | v1.0.1 | 2026-05-12 | 扩写 **§6.1 文物数据 CRUD**：补充 Query 参数、`RelicObject` 字段模型、基于 `user.user_type` 的读写权限、请求/响应 JSON 示例及软删除语义。 |
 | v1.0.0 | —          | 初版。   |
 
@@ -814,7 +815,147 @@ Header 携带 Token。
 | 参数缺失或超长、非法 `page` / `pageSize`（若实现选择校验而非截断） | 400 | 400 |
 | 详情/更新/删除目标不存在或已软删 | 404 | 404 |
 
-### 6.2 知识图谱数据 CRUD
+### 6.2 博物馆数据 CRUD
+
+关系型存储对应数据库表 **`museum`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4**「表 `museum`」）；REST 资源集合路径为 **`/api/v1/data/museums`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。
+
+#### 6.2.1 权限
+
+- 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
+- **GET** `/api/v1/data/museums`、**GET** `/api/v1/data/museums/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
+- **POST** / **PUT** / **DELETE**：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。博物馆写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
+
+#### 6.2.2 博物馆对象 `MuseumObject`（与 `museum` 对齐）
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| objectId | string | 响应必填；创建请求勿传 | UUID v4 |
+| name | string | 是 | 博物馆英文名称，最大 **200** 字符 |
+| nameCn | string | 否 | 中文名称，最大 **200** 字符 |
+| location | string | 否 | 所在城市、国家等，最大 **200** 字符 |
+| website | string | 否 | 官网 URL，最大 **500** 字符 |
+
+> **说明**：当前库表 **`museum`** 无 `is_deleted` / `create_time` 等字段时，列表即为表内全部行；删除接口为**物理删除**。若数据库中文物表外键 **`artifact.museum_id`** 配置为 **`ON DELETE SET NULL`**，删除博物馆后相关文物的 **`museum_id`** 在库内会被置为 **NULL**。
+
+#### 6.2.3 分页列表
+
+**GET** `/api/v1/data/museums`
+
+**Query 参数**
+
+| 参数      | 类型   | 必填 | 说明 |
+| :-------- | :----- | :--- | :--- |
+| page      | number | 否   | 默认 **1**，最小 **1** |
+| pageSize  | number | 否   | 默认 **10**，最大 **100**；超出时**推荐**按 **100** 截断，或返回 **400**（须在实现与 README 中声明策略） |
+| keyword   | string | 否   | 可选；模糊匹配 **`name`** 或 **`nameCn`**（OR） |
+
+**Response (200)** — 分页结构见 **§1.4**，`records[]` 元素为 **`MuseumObject`**。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "records": [
+      {
+        "objectId": "m-550e8400-e29b-41d4-a716-446655440000",
+        "name": "The Metropolitan Museum of Art",
+        "nameCn": "大都会艺术博物馆",
+        "location": "New York, USA",
+        "website": "https://www.metmuseum.org"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10
+  }
+}
+```
+
+#### 6.2.4 详情
+
+**GET** `/api/v1/data/museums/{objectId}`
+
+- 路径参数 **`objectId`** 为博物馆主键。  
+- 资源不存在：返回 **404**，`code` **404**，`data` 为 **null**。  
+- 成功时 `data` 为单个 **`MuseumObject`**。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "m-550e8400-e29b-41d4-a716-446655440000",
+    "name": "The Metropolitan Museum of Art",
+    "nameCn": "大都会艺术博物馆",
+    "location": "New York, USA",
+    "website": "https://www.metmuseum.org"
+  }
+}
+```
+
+#### 6.2.5 创建
+
+**POST** `/api/v1/data/museums`
+
+**Request Body**
+
+- 客户端**勿传** `objectId`（由服务端生成 UUID v4）。  
+- **必填**：`name`；其余字段按 **§6.2.2** 选填。  
+- 任一字符串超出最大长度：**400**。
+
+```json
+{
+  "name": "National Museum of China",
+  "nameCn": "中国国家博物馆",
+  "location": "Beijing, China",
+  "website": "https://www.chnmuseum.cn"
+}
+```
+
+**Response (200)**：`data` 为创建后的完整 **`MuseumObject`**。
+
+#### 6.2.6 更新
+
+**PUT** `/api/v1/data/museums/{objectId}`
+
+- **Body**：支持**部分字段**更新；未出现的字段保持原值。  
+- 目标 **`objectId`** 不存在：**404**。  
+- 成功时 `data` 为更新后的完整 **`MuseumObject`**。
+
+```json
+{
+  "nameCn": "中国国家博物馆（修订）"
+}
+```
+
+#### 6.2.7 删除（物理删除）
+
+**DELETE** `/api/v1/data/museums/{objectId}`
+
+- **语义**：**物理删除** `museum` 表中对应行（与当前无软删列的表结构一致）。  
+- 目标不存在：**404**。  
+- 若数据库外键策略禁止删除（如未来改为 **RESTRICT** 且仍存在引用）：可实现为 **409** 或 **400**，须在 README 声明。  
+- 成功：**HTTP 200**，`code` **200**，`data` 建议为：
+
+```json
+{
+  "objectId": "m-550e8400-e29b-41d4-a716-446655440000",
+  "deleted": true
+}
+```
+
+#### 6.2.8 错误与行为小结
+
+| 场景 | HTTP | code |
+| :--- | :--- | :--- |
+| 未认证 / Token 无效 | 401 | 401 |
+| 写操作且 `user.user_type` ≠ `ADMIN` | 403 | 403 |
+| 参数缺失（如创建缺 `name`）、超长、`page` / `pageSize` 非法（若实现校验） | 400 | 400 |
+| 详情/更新/删除目标不存在 | 404 | 404 |
+| 删除因外键等数据库约束失败（若实现） | 409 / 400 | 同左 |
+
+### 6.3 知识图谱数据 CRUD
 
 **GET** `/api/v1/data/knowledge-graph?page=1&pageSize=10`
 
@@ -824,7 +965,7 @@ Header 携带 Token。
 
 **DELETE** `/api/v1/data/knowledge-graph/{objectId}`
 
-### 6.3 用户生成内容（UGC）管理
+### 6.4 用户生成内容（UGC）管理
 
 **GET** `/api/v1/data/ugc?page=1&pageSize=10&status=ALL&userId=xxx`
 
@@ -833,7 +974,7 @@ Header 携带 Token。
 **DELETE** `/api/v1/data/ugc/{objectId}`
 *仅支持删除，不可修改用户内容。*
 
-### 6.4 数据一致性检查（选做）
+### 6.5 数据一致性检查（选做）
 
 **POST** `/api/v1/data/consistency-check`
 
