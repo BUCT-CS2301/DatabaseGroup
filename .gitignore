@@ -48,5 +48,5 @@ docker/mysql/data/
 
 # cursor rule file
 .cursor/
-.agent/
+.agents/
 AGENTS.md
