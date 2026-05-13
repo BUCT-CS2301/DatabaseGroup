@@ -13,16 +13,20 @@ import com.platform.admin.modules.artifact.entity.ArtifactEntity;
 import com.platform.admin.modules.artifact.mapper.ArtifactMapper;
 import com.platform.admin.modules.artifact.mapper.RelicAssembler;
 import com.platform.admin.modules.artifact.service.ArtifactService;
+import com.platform.admin.modules.artifact.support.RelicCsvImportParser;
 import com.platform.admin.modules.artifact.support.RelicImageFormat;
 import com.platform.admin.modules.artifact.support.RelicImageStorage;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
+import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import com.platform.admin.security.SecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,6 +40,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -55,16 +60,22 @@ public class ArtifactServiceImpl implements ArtifactService {
     private final ArtifactMapper artifactMapper;
     private final RelicImageStorage relicImageStorage;
     private final RelicAutoImageProperties relicAutoImageProperties;
+    private final RelicCsvImportParser relicCsvImportParser;
+    private final TransactionTemplate transactionTemplate;
 
     public ArtifactServiceImpl(
             SecurityUtil securityUtil,
             ArtifactMapper artifactMapper,
             RelicImageStorage relicImageStorage,
-            RelicAutoImageProperties relicAutoImageProperties) {
+            RelicAutoImageProperties relicAutoImageProperties,
+            RelicCsvImportParser relicCsvImportParser,
+            PlatformTransactionManager platformTransactionManager) {
         this.securityUtil = securityUtil;
         this.artifactMapper = artifactMapper;
         this.relicImageStorage = relicImageStorage;
         this.relicAutoImageProperties = relicAutoImageProperties;
+        this.relicCsvImportParser = relicCsvImportParser;
+        this.transactionTemplate = new TransactionTemplate(platformTransactionManager);
     }
 
     @Override
@@ -103,6 +114,28 @@ public class ArtifactServiceImpl implements ArtifactService {
     @Transactional(rollbackFor = Exception.class)
     public RelicVO createRelic(CreateRelicRequest request) {
         securityUtil.requireAdminWritePermission();
+        return insertNewRelic(request);
+    }
+
+    @Override
+    public RelicCsvImportResultVO importRelicsFromCsv(MultipartFile file) {
+        securityUtil.requireAdminWritePermission();
+        log.info("event=relic_csv_import_start file_size_bytes={}", file.getSize());
+        List<CreateRelicRequest> rows = relicCsvImportParser.parseAndValidate(file);
+        return transactionTemplate.execute(status -> {
+            List<String> objectIds = new ArrayList<>(rows.size());
+            for (CreateRelicRequest row : rows) {
+                objectIds.add(insertNewRelic(row).getObjectId());
+            }
+            log.info("event=relic_csv_import_success row_count={}", objectIds.size());
+            return RelicCsvImportResultVO.builder().objectIds(objectIds).build();
+        });
+    }
+
+    /**
+     * 插入一条文物（与单条 POST 相同业务规则，含 M6 图片字段）；不含鉴权，调用方须已校验管理员权限。
+     */
+    private RelicVO insertNewRelic(CreateRelicRequest request) {
         if (request.getCrawlDate() == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "crawlDate不能为空");
         }

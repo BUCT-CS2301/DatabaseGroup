@@ -27,6 +27,8 @@ public class CreateRelicRequest {
     @Size(max = 300, message = "dimensions长度不能超过300")
     private String dimensions;
 
+    @NotBlank(message = "museumId不能为空")
+    @Size(max = 36, message = "museumId长度不能超过36")
     private String museumId;
 
     @NotBlank(message = "detailUrl不能为空")

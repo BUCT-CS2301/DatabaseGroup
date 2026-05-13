@@ -6,6 +6,7 @@ import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.service.ArtifactService;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
+import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import org.slf4j.Logger;
@@ -59,6 +60,14 @@ public class RelicController {
         return Result.success(artifactService.createRelic(request));
     }
 
+    /**
+     * 管理员 CSV 批量创建文物（multipart 字段 {@code file}）
+     */
+    @PostMapping(value = "/import-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<RelicCsvImportResultVO> importRelicsFromCsv(@RequestPart("file") MultipartFile file) {
+        return Result.success(artifactService.importRelicsFromCsv(file));
+    }
+
     @PutMapping("/{objectId}")
     public Result<RelicVO> updateRelic(@PathVariable String objectId, @RequestBody @Valid UpdateRelicRequest request) {
         return Result.success(artifactService.updateRelic(objectId, request));
@@ -70,7 +79,7 @@ public class RelicController {
     }
 
     /**
-     * 管理员上传文物图片（multipart 字段 {@code file}）。
+     * 管理员上传文物图片（multipart 字段 {@code file}）
      */
     @PostMapping(value = "/{objectId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<RelicImageUploadVO> uploadRelicImage(
