@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.2)
+# 后台管理子系统 API 接口文档 (v1.0.3)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.3 | 2026-05-13 | 在 **§6.1 文物数据** 下新增 **§6.1.6 上传文物图片**：**POST** `/api/v1/data/relics/{objectId}/image`（`multipart/form-data`，字段 **`file`**）；白名单 **JPEG/PNG/GIF/WebP**、单文件 **10 MB** 上限、落盘 **`src/main/resources/relics-images/`**、文件名为 **`{objectId}.<扩展名>`**；**§6.1.1** 补充该接口仅 **ADMIN**；原 **§6.1.6～§6.1.8** 顺延为 **§6.1.7～§6.1.9**。 |
 | v1.0.2 | 2026-05-12 | 新增 **§6.2 博物馆数据 CRUD**：资源路径 **`/api/v1/data/museums`**，补充 **`MuseumObject`** 字段模型、分页/详情/创建/更新/删除及 JSON 示例；权限规则与 **§6.1** 中文物接口一致（GET 任意有效 JWT，写操作仅 **`user.user_type=ADMIN`**）；删除为**物理删除**，响应体 **`{ objectId, deleted }`**。原 **§6.2～§6.4** 顺延为 **§6.3～§6.5**。 |
 | v1.0.1 | 2026-05-12 | 扩写 **§6.1 文物数据 CRUD**：补充 Query 参数、`RelicObject` 字段模型、基于 `user.user_type` 的读写权限、请求/响应 JSON 示例及软删除语义。 |
 | v1.0.0 | —          | 初版。   |
@@ -622,7 +623,7 @@ Header 携带 Token。
 
 - 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
 - **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
-- **POST** / **PUT** / **DELETE**：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
+- **POST** `/api/v1/data/relics`、**POST** `/api/v1/data/relics/{objectId}/image`、**PUT** `/api/v1/data/relics/{objectId}`、**DELETE** `/api/v1/data/relics/{objectId}`：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
 
 #### 6.1.2 文物对象 `RelicObject`（与 `artifact` 对齐）
 
@@ -771,7 +772,50 @@ Header 携带 Token。
 
 **Response (200)**：`data` 为创建后的完整 **`RelicObject`**。
 
-#### 6.1.6 更新
+#### 6.1.6 上传文物图片
+
+**POST** `/api/v1/data/relics/{objectId}/image`
+
+- **权限**：与 **§6.1.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
+- **路径参数**：**`objectId`** — 文物主键（与 **`artifact.object_id`** 及 PRD 中的 **`artifact_id`** 为同一标识）。目标不存在或 **`isDeleted=1`**：**404**（与详情接口一致）。  
+- **Content-Type**：**`multipart/form-data`**。  
+- **表单字段**：**`file`**（**必填**）— 单个图片文件。
+
+**支持格式（白名单）**
+
+| 类型 | MIME（示例） | 落盘扩展名（小写） |
+| :--- | :--- | :--- |
+| JPEG | `image/jpeg` | **`.jpg`**（对 `image/jpeg` 统一保存为 **`.jpg`**） |
+| PNG | `image/png` | **`.png`** |
+| GIF | `image/gif` | **`.gif`** |
+| WebP | `image/webp` | **`.webp`** |
+
+- 服务端须通过 **Content-Type** 与/或文件魔数校验；不在上表内：**400**，`message` 建议为 **「不支持的图片格式」**。  
+- **空文件**、缺少 **`file`**、请求体非 multipart：**400**。  
+- **单文件最大体积**：**10 MB**；超出返回 **413** 或 **400**（实现择一，须在 README 中声明）。
+
+**存储路径与文件命名**
+
+- **源码目录（Maven `admin-server` 模块）**：**`admin-server/src/main/resources/relics-images/`**。打包后位于 classpath **`relics-images/`** 下。  
+- **文件名**：**`{objectId}.<扩展名>`**，其中 **`<扩展名>`** 与实际上传格式对应且为小写（见上表）。  
+- **覆盖**：同一 **`objectId`** 再次上传且扩展名相同时**覆盖**原文件；若新扩展名与旧文件不同，实现**可**删除同 **`objectId`** 下其它扩展名的旧文件以避免残留（可选，须在实现说明中声明）。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "550e8400-e29b-41d4-a716-446655440001",
+    "imagePath": "relics-images/550e8400-e29b-41d4-a716-446655440001.jpg"
+  }
+}
+```
+
+- **`data.imagePath`**：相对 classpath 的路径，与 **§6.1.2** **`RelicObject.imagePath`** 语义一致。若接口**仅落盘**、不自动回写数据库，客户端可再调用 **§6.1.7** **PUT** `/api/v1/data/relics/{objectId}` 将 **`imagePath`** 写入 **`artifact`**；若实现选择在落盘同时更新 **`artifact.image_path`**，须在 README 中说明。
+
+#### 6.1.7 更新
 
 **PUT** `/api/v1/data/relics/{objectId}`
 
@@ -791,7 +835,7 @@ Header 携带 Token。
 
 
 
-#### 6.1.7 删除（软删除）
+#### 6.1.8 删除（软删除）
 
 **DELETE** `/api/v1/data/relics/{objectId}`
 
@@ -806,14 +850,16 @@ Header 携带 Token。
 }
 ```
 
-#### 6.1.8 错误与行为小结
+#### 6.1.9 错误与行为小结
 
 | 场景 | HTTP | code |
 | :--- | :--- | :--- |
 | 未认证 / Token 无效 | 401 | 401 |
 | 写操作且 `user.user_type` ≠ `ADMIN` | 403 | 403 |
 | 参数缺失或超长、非法 `page` / `pageSize`（若实现选择校验而非截断） | 400 | 400 |
-| 详情/更新/删除目标不存在或已软删 | 404 | 404 |
+| 上传：非白名单图片类型、空文件、缺 `file`、非法 multipart | 400 | 400 |
+| 上传：单文件超过 **10 MB** | 413 或 400 | 413 或 400 |
+| 详情/更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
 
 ### 6.2 博物馆数据 CRUD
 

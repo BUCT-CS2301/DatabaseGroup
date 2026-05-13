@@ -6,7 +6,11 @@ import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.service.ArtifactService;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
+import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
@@ -18,12 +22,16 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @Validated
 @RestController
 @RequestMapping("/api/v1/data/relics")
 public class RelicController {
+
+    private static final Logger log = LoggerFactory.getLogger(RelicController.class);
 
     private final ArtifactService artifactService;
 
@@ -59,5 +67,16 @@ public class RelicController {
     @DeleteMapping("/{objectId}")
     public Result<DeleteRelicVO> deleteRelic(@PathVariable String objectId) {
         return Result.success(artifactService.deleteRelic(objectId));
+    }
+
+    /**
+     * 管理员上传文物图片（multipart 字段 {@code file}）。
+     */
+    @PostMapping(value = "/{objectId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<RelicImageUploadVO> uploadRelicImage(
+            @PathVariable String objectId,
+            @RequestPart("file") MultipartFile file) {
+        log.info("event=relic_image_upload_start object_id={}", objectId);
+        return Result.success(artifactService.uploadRelicImage(objectId, file));
     }
 }
