@@ -27,18 +27,13 @@ public class CreateRelicRequest {
     @Size(max = 300, message = "dimensions长度不能超过300")
     private String dimensions;
 
+    @NotBlank(message = "museumId不能为空")
+    @Size(max = 36, message = "museumId长度不能超过36")
     private String museumId;
 
     @NotBlank(message = "detailUrl不能为空")
     @Size(max = 1000, message = "detailUrl长度不能超过1000")
     private String detailUrl;
-
-    @NotBlank(message = "imageUrl不能为空")
-    @Size(max = 1000, message = "imageUrl长度不能超过1000")
-    private String imageUrl;
-
-    @Size(max = 500, message = "imagePath长度不能超过500")
-    private String imagePath;
 
     @Size(max = 500, message = "creditLine长度不能超过500")
     private String creditLine;
