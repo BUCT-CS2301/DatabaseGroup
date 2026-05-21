@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.4)
+# 后台管理子系统 API 接口文档 (v1.0.5)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
 | v1.0.4 | 2026-05-13 | **§6.1** 与实现对齐：**POST** 创建文物请求体不再包含 **`imageUrl`/`imagePath`**（由服务端按 **`app.relics`** 与 **`objectId`** 写入）；**`museumId`** 创建时**必填**；**§6.1.6** 上传图片成功响应补充 **`imageUrl`**，并注明落盘后**同步更新库表**；新增 **§6.1.10 CSV 批量创建**（**POST** `/api/v1/data/relics/import-csv`）；**§6.1.1** 补充 **import-csv** 仅 **ADMIN**；**§1.5** 补充业务码 **413**；**§6.1.9** 补充 CSV/413 相关场景。 |
 | v1.0.3 | 2026-05-13 | 在 **§6.1 文物数据** 下新增 **§6.1.6 上传文物图片**：**POST** `/api/v1/data/relics/{objectId}/image`（`multipart/form-data`，字段 **`file`**）；白名单 **JPEG/PNG/GIF/WebP**、单文件 **10 MB** 上限、落盘 **`src/main/resources/relics-images/`**、文件名为 **`{objectId}.<扩展名>`**；**§6.1.1** 补充该接口仅 **ADMIN**；原 **§6.1.6～§6.1.8** 顺延为 **§6.1.7～§6.1.9**。 |
 | v1.0.2 | 2026-05-12 | 新增 **§6.2 博物馆数据 CRUD**：资源路径 **`/api/v1/data/museums`**，补充 **`MuseumObject`** 字段模型、分页/详情/创建/更新/删除及 JSON 示例；权限规则与 **§6.1** 中文物接口一致（GET 任意有效 JWT，写操作仅 **`user.user_type=ADMIN`**）；删除为**物理删除**，响应体 **`{ objectId, deleted }`**。原 **§6.2～§6.4** 顺延为 **§6.3～§6.5**。 |
@@ -14,14 +15,10 @@
 
 ### 1.1 接口基础路径
 
-
-
 ```text
 开发环境: http://localhost:8080/api/v1
 生产环境: https://api.your-domain.com/api/v1
 ```
-
-
 
 ### 1.2 认证方式
 
@@ -29,13 +26,9 @@
 
 - 登录成功后返回 `accessToken`，后续请求在 Header 中携带：
 
-  
-
   ```text
   Authorization: Bearer {accessToken}
   ```
-
-  
 
 - Token 过期后调用刷新接口获取新 Token。
 
@@ -48,8 +41,6 @@
 
 **成功响应**
 
-
-
 ```json
 {
   "code": 200,
@@ -58,11 +49,7 @@
 }
 ```
 
-
-
 **分页响应**
-
-
 
 ```json
 {
@@ -77,11 +64,7 @@
 }
 ```
 
-
-
 **错误响应**
-
-
 
 ```json
 {
@@ -90,8 +73,6 @@
   "data": null
 }
 ```
-
-
 
 ### 1.5 通用错误码
 
@@ -121,7 +102,7 @@
 - 枚举值使用大写字母 + 下划线（如 `STATUS_ENABLED`）。
 - 日期时间格式统一为 **ISO 8601** 字符串（`yyyy-MM-ddTHH:mm:ss`）。
 
-------
+---
 
 ## 2. 认证接口
 
@@ -131,8 +112,6 @@
 
 **Request Body**
 
-
-
 ```json
 {
   "username": "admin",
@@ -140,11 +119,7 @@
 }
 ```
 
-
-
 **Response (200)**
-
-
 
 ```json
 {
@@ -158,16 +133,12 @@
 }
 ```
 
-
-
 ### 2.2 登出
 
 **POST** `/api/v1/auth/logout`
 Header 携带 Token。
 
 **Response (200)**
-
-
 
 ```json
 {
@@ -177,15 +148,11 @@ Header 携带 Token。
 }
 ```
 
-
-
 ### 2.3 获取当前用户信息
 
 **GET** `/api/v1/auth/current-user`
 
 **Response (200)**
-
-
 
 ```json
 {
@@ -201,15 +168,11 @@ Header 携带 Token。
 }
 ```
 
-
-
 ### 2.4 刷新 Token
 
 **POST** `/api/v1/auth/refresh-token`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -217,21 +180,23 @@ Header 携带 Token。
 }
 ```
 
-
-
 **Response (200)** 同登录成功。
 
-------
+---
 
-## 3. 角色与权限管理
+## 3. 用户管理模块
 
-### 3.1 获取角色列表（分页）
+### 3.1 模块概述
+
+用户管理模块负责系统用户的全生命周期管理，包括用户信息维护、角色权限分配、状态管理等功能。该模块支持管理员对系统用户进行精细化管理，确保系统安全稳定运行。
+
+### 3.2 角色管理
+
+#### 3.2.1 获取角色列表（分页）
 
 **GET** `/api/v1/roles?page=1&pageSize=10&keyword=超级`
 
 **Response (200)**
-
-
 
 ```json
 {
@@ -255,15 +220,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 3.2 创建角色
+#### 3.2.2 创建角色
 
 **POST** `/api/v1/roles`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -274,26 +235,22 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 3.3 更新角色
+#### 3.2.3 更新角色
 
 **PUT** `/api/v1/roles/{objectId}`
 
 **Request Body** 同创建（不含 `roleCode` 即可）。
 
-### 3.4 删除角色
+#### 3.2.4 删除角色
 
 **DELETE** `/api/v1/roles/{objectId}`
 *注：系统内置角色不可删除，返回错误码 2002。*
 
-### 3.5 获取角色权限树
+#### 3.2.5 获取角色权限树
 
 **GET** `/api/v1/roles/{objectId}/permissions`
 
 **Response**
-
-
 
 ```json
 {
@@ -310,15 +267,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 3.6 设置角色权限
+#### 3.2.6 设置角色权限
 
 **PUT** `/api/v1/roles/{objectId}/permissions`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -326,23 +279,17 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 3.7 获取所有权限树
+#### 3.2.7 获取所有权限树
 
 **GET** `/api/v1/permissions`
 
-------
+### 3.3 用户管理
 
-## 4. 用户管理
-
-### 4.1 获取用户列表
+#### 3.3.1 获取用户列表
 
 **GET** `/api/v1/users?page=1&pageSize=10&keyword=&status=ENABLED&role=SUPER_ADMIN`
 
 **Response (200)**
-
-
 
 ```json
 {
@@ -368,15 +315,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 4.2 创建用户
+#### 3.3.2 创建用户
 
 **POST** `/api/v1/users`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -389,15 +332,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 4.3 更新用户
+#### 3.3.3 更新用户
 
 **PUT** `/api/v1/users/{objectId}`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -408,20 +347,16 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 4.4 删除用户
+#### 3.3.4 删除用户
 
 **DELETE** `/api/v1/users/{objectId}`
 *逻辑删除，用户状态变为 `DISABLED`。*
 
-### 4.5 更新用户状态
+#### 3.3.5 更新用户状态
 
 **PUT** `/api/v1/users/{objectId}/status`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -429,21 +364,17 @@ Header 携带 Token。
 }
 ```
 
-
-
 `status` 枚举：`ENABLED`、`DISABLED`。
 
-### 4.6 查看用户行为记录
+#### 3.3.6 查看用户行为记录
 
 **GET** `/api/v1/users/{objectId}/logs?page=1&pageSize=20`
 
-### 4.7 用户违规处理（选做）
+#### 3.3.7 用户违规处理（选做）
 
 **POST** `/api/v1/users/{objectId}/violations`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -453,23 +384,25 @@ Header 携带 Token。
 }
 ```
 
+---
 
+## 4. 讲解审核模块
 
-------
+### 4.1 模块概述
 
-## 5. 内容审核
+讲解审核模块负责对平台用户生成内容（UGC）进行审核管理，包括审核规则配置、待审核队列管理、人工审核操作及审核统计等功能，确保平台内容合规性。
 
-### 5.1 获取审核规则配置
+### 4.2 审核规则配置
+
+#### 4.2.1 获取审核规则配置
 
 **GET** `/api/v1/audit/rules`
 
-### 5.2 更新审核规则
+#### 4.2.2 更新审核规则
 
 **PUT** `/api/v1/audit/rules`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -481,15 +414,13 @@ Header 携带 Token。
 }
 ```
 
+### 4.3 审核队列管理
 
-
-### 5.3 待审核队列（分页）
+#### 4.3.1 待审核队列（分页）
 
 **GET** `/api/v1/audit/queue?page=1&pageSize=10&type=ALL&status=PENDING`
 
 **Response**
-
-
 
 ```json
 {
@@ -516,19 +447,17 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 5.4 获取审核详情
+#### 4.3.2 获取审核详情
 
 **GET** `/api/v1/audit/queue/{objectId}`
 
-### 5.5 人工审核通过
+### 4.4 审核操作
+
+#### 4.4.1 人工审核通过
 
 **POST** `/api/v1/audit/queue/{objectId}/approve`
 
 **Request Body (可选)**
-
-
 
 ```json
 {
@@ -536,15 +465,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 5.6 人工审核拒绝
+#### 4.4.2 人工审核拒绝
 
 **POST** `/api/v1/audit/queue/{objectId}/reject`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -553,15 +478,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 5.7 批量通过
+#### 4.4.3 批量通过
 
 **POST** `/api/v1/audit/queue/batch-approve`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -570,15 +491,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 5.8 批量拒绝
+#### 4.4.4 批量拒绝
 
 **POST** `/api/v1/audit/queue/batch-reject`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -587,15 +504,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 5.9 审核统计
+### 4.5 审核统计
 
 **GET** `/api/v1/audit/statistics?startDate=2026-05-01&endDate=2026-05-06`
 
 **Response**
-
-
 
 ```json
 {
@@ -611,23 +524,25 @@ Header 携带 Token。
 }
 ```
 
+---
 
+## 5. 数据管理模块
 
-------
+### 5.1 模块概述
 
-## 6. 数据管理
+数据管理模块负责平台核心数据的管理与维护，包括文物数据、博物馆数据、知识图谱数据及用户生成内容（UGC）的增删改查操作，是系统数据治理的核心模块。
 
-### 6.1 文物数据 CRUD
+### 5.2 文物数据 CRUD
 
 关系型存储对应数据库表 **`artifact`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4**）；REST 资源集合路径为 **`/api/v1/data/relics`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。
 
-#### 6.1.1 权限
+#### 5.2.1 权限
 
 - 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
 - **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
 - **POST** `/api/v1/data/relics`、**POST** `/api/v1/data/relics/import-csv`、**POST** `/api/v1/data/relics/{objectId}/image`、**PUT** `/api/v1/data/relics/{objectId}`、**DELETE** `/api/v1/data/relics/{objectId}`：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
 
-#### 6.1.2 文物对象 `RelicObject`（与 `artifact` 对齐）
+#### 5.2.2 文物对象 `RelicObject`（与 `artifact` 对齐）
 
 | 字段名 | 类型 | 必填 | 约束与说明 |
 | :----- | :--- | :--- | :----------- |
@@ -649,7 +564,7 @@ Header 携带 Token。
 | updateTime | string | 否 | **ISO 8601** |
 | isDeleted | number | 否 | **0** 正常，**1** 已软删；创建时默认 **0**；**列表接口不返回** `isDeleted=1` 的记录 |
 
-#### 6.1.3 分页列表
+#### 5.2.3 分页列表
 
 **GET** `/api/v1/data/relics`
 
@@ -663,8 +578,6 @@ Header 携带 Token。
 | museumId  | string | 否   | 精确匹配 **`museum_id`** |
 
 **Response (200)** — 分页结构见 **§1.4**。
-
-
 
 ```json
 {
@@ -699,9 +612,7 @@ Header 携带 Token。
 }
 ```
 
-
-
-#### 6.1.4 详情
+#### 5.2.4 详情
 
 **GET** `/api/v1/data/relics/{objectId}`
 
@@ -710,8 +621,6 @@ Header 携带 Token。
 - 成功时 `data` 为单个 **`RelicObject`**（结构同列表项）。
 
 **Response (200)**
-
-
 
 ```json
 {
@@ -739,21 +648,17 @@ Header 携带 Token。
 }
 ```
 
-
-
-#### 6.1.5 创建
+#### 5.2.5 创建
 
 **POST** `/api/v1/data/relics`
 
 **Request Body**
 
 - 客户端**勿传** `objectId`、`createTime`、`updateTime`、`imageUrl`、`imagePath`（由服务端生成并写入 **`artifact`**）；`isDeleted` 可不传，默认 **0**。  
-- **必填**：`title`、`museumId`、`detailUrl`、`crawlDate`；其余字段按 **§6.1.2** 选填。  
+- **必填**：`title`、`museumId`、`detailUrl`、`crawlDate`；其余字段按 **§5.2.2** 选填。  
 - **`imageUrl` / `imagePath`**：请求 DTO 中**不包含**该二字段；若客户端仍发送同名 JSON 键（例如经网关透传），由 **Jackson** 默认行为**忽略**未知属性，**不得**采用客户端值落库。  
 - **`imageUrl` / `imagePath`** 生成规则：须配置 **`app.relics.image-public-base-url`**（非空）；未配置时创建失败（**`code`** **500**，`message` 含配置提示）。**`imagePath`** 形如 **`relics-images/{objectId}.{defaultExt}`**，**`defaultExt`** 来自 **`app.relics.default-image-extension`**（默认 **`jpg`**）。  
 - 任一字符串超出最大长度或 Bean 校验失败：**400**。
-
-
 
 ```json
 {
@@ -771,15 +676,13 @@ Header 携带 Token。
 }
 ```
 
-
-
 **Response (200)**：`data` 为创建后的完整 **`RelicObject`**。
 
-#### 6.1.6 上传文物图片
+#### 5.2.6 上传文物图片
 
 **POST** `/api/v1/data/relics/{objectId}/image`
 
-- **权限**：与 **§6.1.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
+- **权限**：与 **§5.2.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
 - **路径参数**：**`objectId`** — 文物主键（与 **`artifact.object_id`** 及 PRD 中的 **`artifact_id`** 为同一标识）。目标不存在或 **`isDeleted=1`**：**404**（与详情接口一致）。  
 - **Content-Type**：**`multipart/form-data`**。  
 - **表单字段**：**`file`**（**必填**）— 单个图片文件。
@@ -817,9 +720,9 @@ Header 携带 Token。
 }
 ```
 
-- **`data.imagePath`**、**`data.imageUrl`**：与 **§6.1.2** **`RelicObject`** 字段语义一致；上传成功后服务端**同步更新**当前文物在库表中的 **`image_path`**、**`image_url`** 及 **`update_time`**。
+- **`data.imagePath`**、**`data.imageUrl`**：与 **§5.2.2** **`RelicObject`** 字段语义一致；上传成功后服务端**同步更新**当前文物在库表中的 **`image_path`**、**`image_url`** 及 **`update_time`**。
 
-#### 6.1.7 更新
+#### 5.2.7 更新
 
 **PUT** `/api/v1/data/relics/{objectId}`
 
@@ -829,17 +732,13 @@ Header 携带 Token。
 
 **Request Body（示例，仅改标题）**
 
-
-
 ```json
 {
   "title": "青铜鼎（修订）"
 }
 ```
 
-
-
-#### 6.1.8 删除（软删除）
+#### 5.2.8 删除（软删除）
 
 **DELETE** `/api/v1/data/relics/{objectId}`
 
@@ -854,7 +753,7 @@ Header 携带 Token。
 }
 ```
 
-#### 6.1.9 错误与行为小结
+#### 5.2.9 错误与行为小结
 
 | 场景 | HTTP | code |
 | :--- | :--- | :--- |
@@ -868,11 +767,11 @@ Header 携带 Token。
 | CSV：整批插入事务内失败 | 500 或 400 | 500 或 400 |
 | 详情/更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
 
-#### 6.1.10 CSV 批量创建文物
+#### 5.2.10 CSV 批量创建文物
 
 **POST** `/api/v1/data/relics/import-csv`
 
-- **权限**：与 **§6.1.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
+- **权限**：与 **§5.2.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
 - **Content-Type**：**`multipart/form-data`**。  
 - **表单字段**：**`file`**（**必填**）— 扩展名为 **`.csv`** 的文本文件。  
 - **编码**：**UTF-8**（严格解码；非法字节序列返回 **`code`** **400**）；支持文件头 **UTF-8 BOM**。  
@@ -897,7 +796,7 @@ Header 携带 Token。
 
 **事务与插入**
 
-- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§6.1.5** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
+- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.5** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
 - **成功**：**`code`** **200**，**`data`** 为对象 **`{ "objectIds": [ ... ] }`**，数组元素为按插入顺序生成的 **`objectId`**（UUID 字符串）。
 
 **Response (200)**
@@ -915,21 +814,21 @@ Header 携带 Token。
 }
 ```
 
-**配置说明（与 §6.1.5 共用）**
+**配置说明（与 §5.2.5 共用）**
 
 - **`app.relics.image-public-base-url`**、**`app.relics.default-image-extension`**：见 **`application.yml`** / 各环境 **`application-*.yml`**。
 
-### 6.2 博物馆数据 CRUD
+### 5.3 博物馆数据 CRUD
 
 关系型存储对应数据库表 **`museum`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4**「表 `museum`」）；REST 资源集合路径为 **`/api/v1/data/museums`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。
 
-#### 6.2.1 权限
+#### 5.3.1 权限
 
 - 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
 - **GET** `/api/v1/data/museums`、**GET** `/api/v1/data/museums/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
 - **POST** / **PUT** / **DELETE**：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。博物馆写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
 
-#### 6.2.2 博物馆对象 `MuseumObject`（与 `museum` 对齐）
+#### 5.3.2 博物馆对象 `MuseumObject`（与 `museum` 对齐）
 
 | 字段名 | 类型 | 必填 | 约束与说明 |
 | :----- | :--- | :--- | :----------- |
@@ -941,7 +840,7 @@ Header 携带 Token。
 
 > **说明**：当前库表 **`museum`** 无 `is_deleted` / `create_time` 等字段时，列表即为表内全部行；删除接口为**物理删除**。若数据库中文物表外键 **`artifact.museum_id`** 配置为 **`ON DELETE SET NULL`**，删除博物馆后相关文物的 **`museum_id`** 在库内会被置为 **NULL**。
 
-#### 6.2.3 分页列表
+#### 5.3.3 分页列表
 
 **GET** `/api/v1/data/museums`
 
@@ -976,7 +875,7 @@ Header 携带 Token。
 }
 ```
 
-#### 6.2.4 详情
+#### 5.3.4 详情
 
 **GET** `/api/v1/data/museums/{objectId}`
 
@@ -998,14 +897,14 @@ Header 携带 Token。
 }
 ```
 
-#### 6.2.5 创建
+#### 5.3.5 创建
 
 **POST** `/api/v1/data/museums`
 
 **Request Body**
 
 - 客户端**勿传** `objectId`（由服务端生成 UUID v4）。  
-- **必填**：`name`；其余字段按 **§6.2.2** 选填。  
+- **必填**：`name`；其余字段按 **§5.3.2** 选填。  
 - 任一字符串超出最大长度：**400**。
 
 ```json
@@ -1019,7 +918,7 @@ Header 携带 Token。
 
 **Response (200)**：`data` 为创建后的完整 **`MuseumObject`**。
 
-#### 6.2.6 更新
+#### 5.3.6 更新
 
 **PUT** `/api/v1/data/museums/{objectId}`
 
@@ -1033,7 +932,7 @@ Header 携带 Token。
 }
 ```
 
-#### 6.2.7 删除（物理删除）
+#### 5.3.7 删除（物理删除）
 
 **DELETE** `/api/v1/data/museums/{objectId}`
 
@@ -1049,7 +948,7 @@ Header 携带 Token。
 }
 ```
 
-#### 6.2.8 错误与行为小结
+#### 5.3.8 错误与行为小结
 
 | 场景 | HTTP | code |
 | :--- | :--- | :--- |
@@ -1059,7 +958,7 @@ Header 携带 Token。
 | 详情/更新/删除目标不存在 | 404 | 404 |
 | 删除因外键等数据库约束失败（若实现） | 409 / 400 | 同左 |
 
-### 6.3 知识图谱数据 CRUD
+### 5.4 知识图谱数据 CRUD
 
 **GET** `/api/v1/data/knowledge-graph?page=1&pageSize=10`
 
@@ -1069,7 +968,7 @@ Header 携带 Token。
 
 **DELETE** `/api/v1/data/knowledge-graph/{objectId}`
 
-### 6.4 用户生成内容（UGC）管理
+### 5.5 用户生成内容（UGC）管理
 
 **GET** `/api/v1/data/ugc?page=1&pageSize=10&status=ALL&userId=xxx`
 
@@ -1078,13 +977,11 @@ Header 携带 Token。
 **DELETE** `/api/v1/data/ugc/{objectId}`
 *仅支持删除，不可修改用户内容。*
 
-### 6.5 数据一致性检查（选做）
+### 5.6 数据一致性检查（选做）
 
 **POST** `/api/v1/data/consistency-check`
 
 **Response**
-
-
 
 ```json
 {
@@ -1096,19 +993,21 @@ Header 携带 Token。
 }
 ```
 
+---
 
+## 6. 备份与恢复模块
 
-------
+### 6.1 模块概述
 
-## 7. 数据备份与恢复
+备份与恢复模块负责系统数据的安全保护，支持手动备份、定时备份任务管理、备份记录查询及数据恢复功能，确保数据安全与业务连续性。
 
-### 7.1 手动触发备份
+### 6.2 备份操作
+
+#### 6.2.1 手动触发备份
 
 **POST** `/api/v1/backup/manual`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -1117,15 +1016,15 @@ Header 携带 Token。
 }
 ```
 
+### 6.3 定时备份任务管理
 
-
-### 7.2 定时备份任务管理
+#### 6.3.1 获取定时任务列表
 
 **GET** `/api/v1/backup/schedules`
 
+#### 6.3.2 创建定时任务
+
 **POST** `/api/v1/backup/schedules`
-
-
 
 ```json
 {
@@ -1136,28 +1035,36 @@ Header 携带 Token。
 }
 ```
 
-
+#### 6.3.3 更新定时任务
 
 **PUT** `/api/v1/backup/schedules/{objectId}`
 
+#### 6.3.4 删除定时任务
+
 **DELETE** `/api/v1/backup/schedules/{objectId}`
 
-### 7.3 备份记录查询
+### 6.4 备份记录管理
+
+#### 6.4.1 查询备份记录（分页）
 
 **GET** `/api/v1/backup/records?page=1&pageSize=10&status=SUCCESS`
 
-**GET** `/api/v1/backup/records/{objectId}` (下载链接等详情)
+#### 6.4.2 获取备份详情（含下载链接）
 
-**DELETE** `/api/v1/backup/records/{objectId}` (删除备份文件)
+**GET** `/api/v1/backup/records/{objectId}`
 
-### 7.4 从备份恢复
+#### 6.4.3 删除备份文件
+
+**DELETE** `/api/v1/backup/records/{objectId}`
+
+### 6.5 数据恢复
+
+#### 6.5.1 从备份恢复
 
 **POST** `/api/v1/backup/restore/{objectId}`
 *objectId 为备份记录 ID。*
 
 **Response**
-
-
 
 ```json
 {
@@ -1169,15 +1076,13 @@ Header 携带 Token。
 }
 ```
 
+### 6.6 存储信息
 
-
-### 7.5 备份存储信息
+#### 6.6.1 获取备份存储信息
 
 **GET** `/api/v1/backup/storage-info`
 
 **Response**
-
-
 
 ```json
 {
@@ -1190,33 +1095,29 @@ Header 携带 Token。
 }
 ```
 
+---
 
+## 7. 日志管理
 
-------
-
-## 8. 日志管理
-
-### 8.1 操作日志
+### 7.1 操作日志
 
 **GET** `/api/v1/logs/operation?page=1&pageSize=20&userId=xxx&module=USER&startTime=2026-05-01&endTime=2026-05-06`
 
 **GET** `/api/v1/logs/operation/{objectId}`
 
-### 8.2 系统日志
+### 7.2 系统日志
 
 **GET** `/api/v1/logs/system?page=1&pageSize=20&level=ERROR`
 
-### 8.3 安全日志
+### 7.3 安全日志
 
 **GET** `/api/v1/logs/security?page=1&pageSize=20`
 
-### 8.4 日志导出
+### 7.4 日志导出
 
 **POST** `/api/v1/logs/export`
 
 **Request Body**
-
-
 
 ```json
 {
@@ -1230,11 +1131,7 @@ Header 携带 Token。
 }
 ```
 
-
-
 **Response**
-
-
 
 ```json
 {
@@ -1246,19 +1143,15 @@ Header 携带 Token。
 }
 ```
 
+---
 
+## 8. 系统监控看板
 
-------
-
-## 9. 系统监控看板
-
-### 9.1 实时概览统计
+### 8.1 实时概览统计
 
 **GET** `/api/v1/dashboard/statistics`
 
 **Response**
-
-
 
 ```json
 {
@@ -1274,15 +1167,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 9.2 访问量趋势
+### 8.2 访问量趋势
 
 **GET** `/api/v1/dashboard/visits?period=WEEK`
 
 **Response**
-
-
 
 ```json
 {
@@ -1294,15 +1183,11 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 9.3 数据增长统计
+### 8.3 数据增长统计
 
 **GET** `/api/v1/dashboard/data-growth?period=MONTH`
 
 **Response**
-
-
 
 ```json
 {
@@ -1316,39 +1201,31 @@ Header 携带 Token。
 }
 ```
 
-
-
-### 9.4 异常告警列表（选做）
+### 8.4 异常告警列表（选做）
 
 **GET** `/api/v1/dashboard/alerts?page=1&pageSize=10`
 
-------
+---
 
-## 10. 系统配置管理（选做）
+## 9. 系统配置管理（选做）
 
-### 10.1 敏感词库
+### 9.1 敏感词库
 
 **GET** `/api/v1/config/sensitive-words?page=1&pageSize=50`
 
 **POST** `/api/v1/config/sensitive-words`
 
-
-
 ```json
 { "word": "违规词" }
 ```
 
-
-
 **DELETE** `/api/v1/config/sensitive-words/{objectId}`
 
-### 10.2 系统公告
+### 9.2 系统公告
 
 **GET** `/api/v1/config/announcements?status=ACTIVE`
 
 **POST** `/api/v1/config/announcements`
-
-
 
 ```json
 {
@@ -1358,19 +1235,15 @@ Header 携带 Token。
 }
 ```
 
-
-
 **PUT** `/api/v1/config/announcements/{objectId}`
 
 **DELETE** `/api/v1/config/announcements/{objectId}`
 
-### 10.3 功能开关
+### 9.3 功能开关
 
 **GET** `/api/v1/config/features`
 
 **PUT** `/api/v1/config/features`
-
-
 
 ```json
 {
@@ -1380,8 +1253,6 @@ Header 携带 Token。
 }
 ```
 
-
-
-------
+---
 
 > **文档维护说明**：所有接口修改须同步更新本文档。接口路径统一使用 `/api/v1` 前缀，字段名、错误码严禁随意变更。
