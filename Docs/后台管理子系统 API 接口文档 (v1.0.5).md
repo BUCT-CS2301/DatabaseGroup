@@ -1,10 +1,12 @@
-# 后台管理子系统 API 接口文档 (v1.0.3)
+# 后台管理子系统 API 接口文档 (v1.0.5)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
-| v1.0.3 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；补充各模块功能说明与接口详情。 |
+| v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
+| v1.0.4 | 2026-05-13 | **§6.1** 与实现对齐：**POST** 创建文物请求体不再包含 **`imageUrl`/`imagePath`**（由服务端按 **`app.relics`** 与 **`objectId`** 写入）；**`museumId`** 创建时**必填**；**§6.1.6** 上传图片成功响应补充 **`imageUrl`**，并注明落盘后**同步更新库表**；新增 **§6.1.10 CSV 批量创建**（**POST** `/api/v1/data/relics/import-csv`）；**§6.1.1** 补充 **import-csv** 仅 **ADMIN**；**§1.5** 补充业务码 **413**；**§6.1.9** 补充 CSV/413 相关场景。 |
+| v1.0.3 | 2026-05-13 | 在 **§6.1 文物数据** 下新增 **§6.1.6 上传文物图片**：**POST** `/api/v1/data/relics/{objectId}/image`（`multipart/form-data`，字段 **`file`**）；白名单 **JPEG/PNG/GIF/WebP**、单文件 **10 MB** 上限、落盘 **`src/main/resources/relics-images/`**、文件名为 **`{objectId}.<扩展名>`**；**§6.1.1** 补充该接口仅 **ADMIN**；原 **§6.1.6～§6.1.8** 顺延为 **§6.1.7～§6.1.9**。 |
 | v1.0.2 | 2026-05-12 | 新增 **§6.2 博物馆数据 CRUD**：资源路径 **`/api/v1/data/museums`**，补充 **`MuseumObject`** 字段模型、分页/详情/创建/更新/删除及 JSON 示例；权限规则与 **§6.1** 中文物接口一致（GET 任意有效 JWT，写操作仅 **`user.user_type=ADMIN`**）；删除为**物理删除**，响应体 **`{ objectId, deleted }`**。原 **§6.2～§6.4** 顺延为 **§6.3～§6.5**。 |
 | v1.0.1 | 2026-05-12 | 扩写 **§6.1 文物数据 CRUD**：补充 Query 参数、`RelicObject` 字段模型、基于 `user.user_type` 的读写权限、请求/响应 JSON 示例及软删除语义。 |
 | v1.0.0 | —          | 初版。   |
@@ -81,6 +83,7 @@
 | 401    | 未认证 / Token 失效 |
 | 403    | 无操作权限          |
 | 404    | 资源不存在          |
+| 413    | 请求体过大（如单文件超过 **10 MB**） |
 | 500    | 服务器内部错误      |
 | 1001   | 用户名或密码错误    |
 | 1002   | 账号已被禁用        |
@@ -537,7 +540,7 @@ Header 携带 Token。
 
 - 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
 - **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
-- **POST** / **PUT** / **DELETE**：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
+- **POST** `/api/v1/data/relics`、**POST** `/api/v1/data/relics/import-csv`、**POST** `/api/v1/data/relics/{objectId}/image`、**PUT** `/api/v1/data/relics/{objectId}`、**DELETE** `/api/v1/data/relics/{objectId}`：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
 
 #### 5.2.2 文物对象 `RelicObject`（与 `artifact` 对齐）
 
@@ -550,10 +553,10 @@ Header 携带 Token。
 | material | string | 否 | 最大 **200** 字符 |
 | description | string | 否 | 文本 |
 | dimensions | string | 否 | 最大 **300** 字符 |
-| museumId | string | 否 | 关联 `museum.object_id` |
+| museumId | string | 创建请求**必填**；响应必填 | 关联 `museum.object_id`，最大 **36** 字符（与 **`CreateRelicRequest`** 一致） |
 | detailUrl | string | 是 | 最大 **1000** 字符 |
-| imageUrl | string | 是 | 最大 **1000** 字符 |
-| imagePath | string | 否 | 最大 **500** 字符 |
+| imageUrl | string | 响应必填；**创建 JSON 勿传** | 最大 **1000** 字符；由服务端按配置 **`app.relics.image-public-base-url`** 与 **`objectId`** 生成并落库 |
+| imagePath | string | 响应必填；**创建 JSON 勿传** | 最大 **500** 字符；由服务端生成，形如 **`relics-images/{objectId}.{ext}`**（**`ext`** 默认 **`jpg`**，见 **`app.relics.default-image-extension`**） |
 | creditLine | string | 否 | 最大 **500** 字符 |
 | accessionNumber | string | 否 | 最大 **100** 字符 |
 | crawlDate | string | 是 | 日期 **`yyyy-MM-dd`** |
@@ -651,9 +654,11 @@ Header 携带 Token。
 
 **Request Body**
 
-- 客户端**勿传** `objectId`、`createTime`、`updateTime`（由服务端生成）；`isDeleted` 可不传，默认 **0**。  
-- **必填**：`title`、`detailUrl`、`imageUrl`、`crawlDate`；其余字段按 **§5.2.2** 选填。  
-- 任一字符串超出最大长度：**400**。
+- 客户端**勿传** `objectId`、`createTime`、`updateTime`、`imageUrl`、`imagePath`（由服务端生成并写入 **`artifact`**）；`isDeleted` 可不传，默认 **0**。  
+- **必填**：`title`、`museumId`、`detailUrl`、`crawlDate`；其余字段按 **§5.2.2** 选填。  
+- **`imageUrl` / `imagePath`**：请求 DTO 中**不包含**该二字段；若客户端仍发送同名 JSON 键（例如经网关透传），由 **Jackson** 默认行为**忽略**未知属性，**不得**采用客户端值落库。  
+- **`imageUrl` / `imagePath`** 生成规则：须配置 **`app.relics.image-public-base-url`**（非空）；未配置时创建失败（**`code`** **500**，`message` 含配置提示）。**`imagePath`** 形如 **`relics-images/{objectId}.{defaultExt}`**，**`defaultExt`** 来自 **`app.relics.default-image-extension`**（默认 **`jpg`**）。  
+- 任一字符串超出最大长度或 Bean 校验失败：**400**。
 
 ```json
 {
@@ -665,7 +670,6 @@ Header 携带 Token。
   "dimensions": null,
   "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
   "detailUrl": "https://museum.example.org/object/new",
-  "imageUrl": "https://cdn.example.org/relics/new.jpg",
   "creditLine": null,
   "accessionNumber": "2026.001",
   "crawlDate": "2026-05-12"
@@ -674,7 +678,51 @@ Header 携带 Token。
 
 **Response (200)**：`data` 为创建后的完整 **`RelicObject`**。
 
-#### 5.2.6 更新
+#### 5.2.6 上传文物图片
+
+**POST** `/api/v1/data/relics/{objectId}/image`
+
+- **权限**：与 **§5.2.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
+- **路径参数**：**`objectId`** — 文物主键（与 **`artifact.object_id`** 及 PRD 中的 **`artifact_id`** 为同一标识）。目标不存在或 **`isDeleted=1`**：**404**（与详情接口一致）。  
+- **Content-Type**：**`multipart/form-data`**。  
+- **表单字段**：**`file`**（**必填**）— 单个图片文件。
+
+**支持格式（白名单）**
+
+| 类型 | MIME（示例） | 落盘扩展名（小写） |
+| :--- | :--- | :--- |
+| JPEG | `image/jpeg` | **`.jpg`**（对 `image/jpeg` 统一保存为 **`.jpg`**） |
+| PNG | `image/png` | **`.png`** |
+| GIF | `image/gif` | **`.gif`** |
+| WebP | `image/webp` | **`.webp`** |
+
+- 服务端须通过 **Content-Type** 与/或文件魔数校验；不在上表内：**400**，`message` 建议为 **「不支持的图片格式」**。  
+- **空文件**、缺少 **`file`**、请求体非 multipart：**400**。  
+- **单文件最大体积**：**10 MB**；超出时响应 **`code`** **413**，`message` 为 **「单张图片不能超过 10 MB」**（与 **`MaxUploadSizeExceededException`** 处理一致；**HTTP** 状态码与全局 **`Result`** 约定一致，一般为 **200**）。
+
+**存储路径与文件命名**
+
+- **源码目录（Maven `admin-server` 模块）**：**`admin-server/src/main/resources/relics-images/`**（可通过 **`app.relic-images.directory`** 覆盖落盘根路径；未配置时开发环境常用 **`target/classes/relics-images`**）。打包后默认位于 classpath **`relics-images/`** 下。  
+- **文件名**：**`{objectId}.<扩展名>`**，其中 **`<扩展名>`** 与实际上传格式对应且为小写（见上表）。  
+- **覆盖**：同一 **`objectId`** 再次上传且扩展名相同时**覆盖**原文件；若新扩展名与旧文件不同，服务端**删除**同 **`objectId`** 下其它扩展名的旧文件，避免磁盘残留。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "550e8400-e29b-41d4-a716-446655440001",
+    "imagePath": "relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
+    "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg"
+  }
+}
+```
+
+- **`data.imagePath`**、**`data.imageUrl`**：与 **§5.2.2** **`RelicObject`** 字段语义一致；上传成功后服务端**同步更新**当前文物在库表中的 **`image_path`**、**`image_url`** 及 **`update_time`**。
+
+#### 5.2.7 更新
 
 **PUT** `/api/v1/data/relics/{objectId}`
 
@@ -690,7 +738,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.2.7 删除（软删除）
+#### 5.2.8 删除（软删除）
 
 **DELETE** `/api/v1/data/relics/{objectId}`
 
@@ -705,14 +753,70 @@ Header 携带 Token。
 }
 ```
 
-#### 5.2.8 错误与行为小结
+#### 5.2.9 错误与行为小结
 
 | 场景 | HTTP | code |
 | :--- | :--- | :--- |
 | 未认证 / Token 无效 | 401 | 401 |
 | 写操作且 `user.user_type` ≠ `ADMIN` | 403 | 403 |
 | 参数缺失或超长、非法 `page` / `pageSize`（若实现选择校验而非截断） | 400 | 400 |
-| 详情/更新/删除目标不存在或已软删 | 404 | 404 |
+| 上传：非白名单图片类型、空文件、缺 `file`、非法 multipart | 400 | 400 |
+| 上传：单文件超过 **10 MB** | 413 | 413 |
+| CSV：文件超过 **10 MB** | 413 | 413 |
+| CSV：表头缺列、列冲突、无数据行、行必填缺失、日期非法、重复行、数据行超 **2000**、非 UTF-8 / 解析失败等 | 400 | 400 |
+| CSV：整批插入事务内失败 | 500 或 400 | 500 或 400 |
+| 详情/更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
+
+#### 5.2.10 CSV 批量创建文物
+
+**POST** `/api/v1/data/relics/import-csv`
+
+- **权限**：与 **§5.2.1** 文物写操作一致，仅 **`user.user_type=ADMIN`**；否则 **403**。未认证 **401**。  
+- **Content-Type**：**`multipart/form-data`**。  
+- **表单字段**：**`file`**（**必填**）— 扩展名为 **`.csv`** 的文本文件。  
+- **编码**：**UTF-8**（严格解码；非法字节序列返回 **`code`** **400**）；支持文件头 **UTF-8 BOM**。  
+- **单文件最大体积**：**10 MB**；超出 **`code`** **413**，`message`：**「CSV 文件不能超过 10 MB」**。  
+- **最大数据行数**（不含表头）：**2000**；超出 **`code`** **400**。
+
+**表头与列名匹配**
+
+- 首行必须为**表头**；表头不能为空；须能映射到 **`CreateRelicRequest`** 的**全部** Java 属性列（当前 **11** 列，顺序无关）：**`title`**、**`period`**、**`type`**、**`material`**、**`description`**、**`dimensions`**、**`museumId`**、**`detailUrl`**、**`creditLine`**、**`accessionNumber`**、**`crawlDate`**。  
+- **列名规范化**（表头与属性名比较前均执行）：转小写、去掉 ASCII **`_`**、去掉所有 Unicode 空白字符。  
+- **缺列**（任一属性无匹配列）或**列冲突**（两列表头规范化后映射到同一属性）：**`code`** **400**。  
+- 其它未匹配到上述 **11** 属性的表头列：**忽略**。
+
+**数据行**
+
+- 自第二行起为数据行；**整行无非空白内容**的行**跳过**。  
+- 须至少存在 **1** 条有效数据行；否则 **`code`** **400**，`message`：**「CSV 无数据行」**。  
+- **必填单元格**（trim 后非空）：**`title`**、**`museumId`**、**`detailUrl`**、**`crawlDate`**（日期格式 **`yyyy-MM-dd`**，与 **ISO_LOCAL_DATE** 一致）。  
+- **可选单元格**：**`period`**、**`type`**、**`material`**、**`description`**、**`dimensions`**、**`creditLine`**、**`accessionNumber`** 允许为空或仅空白。  
+- 每行构造 **`CreateRelicRequest`** 后执行 **Bean Validation**；失败 **`code`** **400**，`message` 含 **`第 N 行:`** 前缀。  
+- **重复行**：若两行在 **11** 个映射列上 trim 后的取值**完全相同**，**`code`** **400**，`message` 含行号说明。
+
+**事务与插入**
+
+- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.5** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
+- **成功**：**`code`** **200**，**`data`** 为对象 **`{ "objectIds": [ ... ] }`**，数组元素为按插入顺序生成的 **`objectId`**（UUID 字符串）。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectIds": [
+      "550e8400-e29b-41d4-a716-446655440001",
+      "660e8400-e29b-41d4-a716-446655440002"
+    ]
+  }
+}
+```
+
+**配置说明（与 §5.2.5 共用）**
+
+- **`app.relics.image-public-base-url`**、**`app.relics.default-image-extension`**：见 **`application.yml`** / 各环境 **`application-*.yml`**。
 
 ### 5.3 博物馆数据 CRUD
 
