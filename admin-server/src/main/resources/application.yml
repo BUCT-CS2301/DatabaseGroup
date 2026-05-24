@@ -18,3 +18,11 @@ app:
   relics:
     default-image-extension: jpg
     image-public-base-url: ""
+  backup:
+    storage-directory: ""
+    total-space-mb: 20480
+    mysqldump-path: mysqldump
+    mysql-path: mysql
+    retention-days: 30
+    max-concurrent-backups: 1
+    in-progress-timeout-minutes: 10
