@@ -32,8 +32,8 @@ public class AuthController {
         if (user == null) {
             return Result.error(1001, "用户名或密码错误");
         }
-        
-        if ("DISABLED".equals(user.getStatus())) {
+
+        if ("DISABLED".equals(user.getStatus())) { 
             return Result.error(1002, "账号已被禁用");
         }
         
@@ -53,7 +53,44 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Result<Void> logout() {
-        return Result.success(null);
+        Result<Void> result = Result.success(null);
+        result.setMessage("登出成功");
+        return result;
+    }
+
+    @PostMapping("/register")
+    public Result<Map<String, Object>> register(@RequestBody Map<String, Object> request) {
+        String username = (String) request.get("username");
+        String password = (String) request.get("password");
+        String nickname = (String) request.get("nickname");
+        String email = (String) request.get("email");
+        String phone = (String) request.get("phone");
+
+        User existing = userService.getByUsername(username);
+        if (existing != null) {
+            return Result.error(ErrorCode.CONFLICT, "用户名已存在");
+        }
+
+        User user = new User();
+        user.setUsername(username);
+        user.setPasswordHash(password);
+        user.setNickname(nickname);
+        user.setEmail(email);
+        user.setPhone(phone);
+
+        User registeredUser = userService.register(user);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", registeredUser.getObjectId());
+        data.put("username", registeredUser.getUsername());
+        data.put("nickname", registeredUser.getNickname());
+        data.put("email", registeredUser.getEmail());
+        data.put("phone", registeredUser.getPhone());
+        data.put("status", registeredUser.getStatus());
+        data.put("roles", new String[]{registeredUser.getUserType()});
+        data.put("createTime", registeredUser.getCreateTime());
+
+        return Result.success(data);
     }
 
     @GetMapping("/current-user")
