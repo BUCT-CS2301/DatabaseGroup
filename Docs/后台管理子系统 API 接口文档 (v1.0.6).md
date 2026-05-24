@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.5)
+# 后台管理子系统 API 接口文档 (v1.0.6)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.6 | 2026-05-21 | 扩写 **§6 备份与恢复**：与 `BackupController` / `BackupServiceImpl` 实现对齐；补充权限（仅 **ADMIN**）、枚举、请求/响应示例、**下载**与**恢复任务查询**接口、异步语义、冲突与业务错误码 **4001/409** 等。 |
 | v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
 | v1.0.4 | 2026-05-13 | **§6.1** 与实现对齐：**POST** 创建文物请求体不再包含 **`imageUrl`/`imagePath`**（由服务端按 **`app.relics`** 与 **`objectId`** 写入）；**`museumId`** 创建时**必填**；**§6.1.6** 上传图片成功响应补充 **`imageUrl`**，并注明落盘后**同步更新库表**；新增 **§6.1.10 CSV 批量创建**（**POST** `/api/v1/data/relics/import-csv`）；**§6.1.1** 补充 **import-csv** 仅 **ADMIN**；**§1.5** 补充业务码 **413**；**§6.1.9** 补充 CSV/413 相关场景。 |
 | v1.0.3 | 2026-05-13 | 在 **§6.1 文物数据** 下新增 **§6.1.6 上传文物图片**：**POST** `/api/v1/data/relics/{objectId}/image`（`multipart/form-data`，字段 **`file`**）；白名单 **JPEG/PNG/GIF/WebP**、单文件 **10 MB** 上限、落盘 **`src/main/resources/relics-images/`**、文件名为 **`{objectId}.<扩展名>`**；**§6.1.1** 补充该接口仅 **ADMIN**；原 **§6.1.6～§6.1.8** 顺延为 **§6.1.7～§6.1.9**。 |
@@ -999,15 +1000,49 @@ Header 携带 Token。
 
 ### 6.1 模块概述
 
-备份与恢复模块负责系统数据的安全保护，支持手动备份、定时备份任务管理、备份记录查询及数据恢复功能，确保数据安全与业务连续性。
+备份与恢复模块对平台 **MySQL** 业务库执行 **`mysqldump`** 导出，落盘为 **`.sql.gz`** 文件；支持**手动备份**、**Cron 定时任务**、**备份记录**查询/下载/删除，以及基于备份文件的**异步恢复**。备份与恢复为**长耗时异步任务**：接口在创建记录后**立即返回**，实际 dump/restore 在后台线程执行，客户端须通过记录 **`status`** 或恢复任务查询接口轮询结果。
 
-### 6.2 备份操作
+关系型元数据表：**`backup_record`**、**`backup_schedule`**（字段见《后台管理子系统 数据库设计文档》备份相关章节，若尚未落库文档则以本接口 VO 为准）。REST 前缀：**`/api/v1/backup`**，JSON 字段一律 **camelCase**，主键 **`objectId`**（UUID v4 字符串）。
 
-#### 6.2.1 手动触发备份
+### 6.2 备份与恢复 API
+
+#### 6.2.1 权限
+
+- 所有 **`/api/v1/backup/**`** 接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未认证返回 **401**（见 **§1.5**）。  
+- **全部**备份与恢复接口（含 **GET** 只读）仅当当前登录用户 **`user.user_type=ADMIN`** 时允许；否则 **403**，`message` 建议 **「无操作权限」**（与文物写操作判定方式一致，**不**依据 RBAC `roleCode`）。  
+- **说明**：Spring Security 层仅要求 **authenticated**；**ADMIN** 校验在 Service 内执行，与 **§5.2.1** 文物 **GET** 可匿名读不同，备份模块**无**「普通用户只读」接口。
+
+#### 6.2.2 枚举与公共约定
+
+| 枚举 | 取值 | 说明 |
+| :--- | :--- | :--- |
+| **`BackupType`** | `FULL`、`INCREMENTAL` | 全量 / 增量；见 **§6.2.3** 降级规则 |
+| **`BackupStatus`** | `SUCCESS`、`FAILED`、`IN_PROGRESS` | 备份记录状态 |
+| **`RestoreTaskStatus`** | `PROCESSING`、`SUCCESS`、`FAILED` | 恢复任务状态（内存任务表，非持久化） |
+
+- **日期时间**：响应中 **`createTime`**、**`updateTime`**、**`lastExecutionTime`**、**`nextExecutionTime`** 为 **ISO 8601** 本地时间字符串 **`yyyy-MM-ddTHH:mm:ss`**（服务端时区 **Asia/Shanghai**）。  
+- **Cron 表达式**：**6 位** Spring Cron（**秒 分 时 日 月 周**），例如 **`0 0 2 * * ?`** 表示每日 02:00:00；非法表达式返回 **400**。  
+- **备份文件**：文件名 **`{objectId}_{backupType}_{yyyyMMddHHmmss}.sql.gz`**，落盘目录由 **`app.backup.storage-directory`** 配置；为空时默认 **`classpath:backups`**（开发环境一般为 **`target/classes/backups`**）。
+
+#### 6.2.3 业务规则（与实现对齐）
+
+- **异步备份**：**POST** 手动备份或定时触发后，先插入 **`backup_record`**（**`IN_PROGRESS`**），事务提交后异步执行 **`mysqldump`**；成功则 **`SUCCESS`** 并写入 **`fileSize`**，失败则 **`FAILED`**。  
+- **增量降级**：请求 **`INCREMENTAL`** 时，若库中**尚无** **`SUCCESS`** 备份，服务端**自动按 `FULL` 执行**，并在 **`description`** 末尾追加系统备注（若无自定义描述则仅备注）。  
+- **并发互斥**：存在 **`IN_PROGRESS`** 备份，或存在进行中的恢复任务时，新的手动备份 / 定时备份 / 恢复请求返回 **`code`** **409**（`message` 如「已有备份任务进行中」或「系统正在恢复中」）。  
+- **僵死任务**：**`IN_PROGRESS`** 超过 **`app.backup.in-progress-timeout-minutes`**（默认 **10**）可由后台对账任务标记为 **`FAILED`**（实现细节见 README）。  
+- **存储配额**：异步备份开始前校验 **`app.backup.total-space-mb`**（默认 **20480**）与已用空间；不足时备份失败。  
+- **操作审计**：写操作写入 **`operation_log`**（模块 **`BACKUP`**），与 **§7** 日志管理可关联查询。
+
+#### 6.2.4 手动触发备份
 
 **POST** `/api/v1/backup/manual`
 
 **Request Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| backupType | string | 是 | **`FULL`** 或 **`INCREMENTAL`** |
+| description | string | 否 | 最大 **500** 字符 |
 
 ```json
 {
@@ -1016,15 +1051,61 @@ Header 携带 Token。
 }
 ```
 
-### 6.3 定时备份任务管理
+**Response (200)** — 立即返回，**不等待** dump 完成；`data` 为 **`ManualBackupVO`**：
 
-#### 6.3.1 获取定时任务列表
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "b550e8400-e29b-41d4-a716-446655440001",
+    "backupType": "FULL",
+    "status": "IN_PROGRESS",
+    "description": "2026年5月6日手动全量备份",
+    "createTime": "2026-05-06T14:30:00"
+  }
+}
+```
+
+#### 6.2.5 定时备份任务
+
+##### 6.2.5.1 列表
 
 **GET** `/api/v1/backup/schedules`
 
-#### 6.3.2 创建定时任务
+- 按 **`createTime`** 倒序返回全部定时任务。  
+- **Response (200)**：`data` 为 **`BackupScheduleVO[]`**。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "objectId": "sch-550e8400-e29b-41d4-a716-446655440000",
+      "cronExpression": "0 0 2 * * ?",
+      "backupType": "INCREMENTAL",
+      "enabled": true,
+      "description": "每日凌晨2点增量备份",
+      "lastExecutionTime": "2026-05-06T02:00:15",
+      "nextExecutionTime": "2026-05-07T02:00:00",
+      "createTime": "2026-05-01T10:00:00",
+      "updateTime": "2026-05-06T02:00:15"
+    }
+  ]
+}
+```
+
+##### 6.2.5.2 创建
 
 **POST** `/api/v1/backup/schedules`
+
+| 字段 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| cronExpression | string | 是 | 最大 **50** 字符，6 位 Cron |
+| backupType | string | 是 | **`FULL`** / **`INCREMENTAL`** |
+| enabled | boolean | 否 | 默认 **`true`** |
+| description | string | 否 | 最大 **500** 字符 |
 
 ```json
 {
@@ -1035,65 +1116,230 @@ Header 携带 Token。
 }
 ```
 
-#### 6.3.3 更新定时任务
+**Response (200)**：`data` 为 **`BackupScheduleVO`**（含计算的 **`nextExecutionTime`**）。
+
+##### 6.2.5.3 更新
 
 **PUT** `/api/v1/backup/schedules/{objectId}`
 
-#### 6.3.4 删除定时任务
+- **Body**：**部分字段**更新；未传字段保持原值。  
+- 若更新 **`cronExpression`**，服务端重新计算 **`nextExecutionTime`**。  
+- 目标不存在：**404**。
+
+```json
+{
+  "enabled": false,
+  "description": "暂停夜间备份"
+}
+```
+
+**Response (200)**：`data` 为更新后的 **`BackupScheduleVO`**。
+
+##### 6.2.5.4 删除
 
 **DELETE** `/api/v1/backup/schedules/{objectId}`
 
-### 6.4 备份记录管理
+- **物理删除** `backup_schedule` 行。  
+- 目标不存在：**404**。  
+- 成功 **`data`**：
 
-#### 6.4.1 查询备份记录（分页）
+```json
+{
+  "objectId": "sch-550e8400-e29b-41d4-a716-446655440000",
+  "deleted": true
+}
+```
 
-**GET** `/api/v1/backup/records?page=1&pageSize=10&status=SUCCESS`
+#### 6.2.6 备份记录
 
-#### 6.4.2 获取备份详情（含下载链接）
+##### 6.2.6.1 分页列表
 
-**GET** `/api/v1/backup/records/{objectId}`
+**GET** `/api/v1/backup/records`
 
-#### 6.4.3 删除备份文件
+**Query 参数**
 
-**DELETE** `/api/v1/backup/records/{objectId}`
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| page | number | 否 | 默认 **1**，最小 **1** |
+| pageSize | number | 否 | 默认 **10**，最小 **1**，最大 **100**（超出 **400**） |
+| status | string | 否 | **`SUCCESS`** / **`FAILED`** / **`IN_PROGRESS`** |
+| backupType | string | 否 | **`FULL`** / **`INCREMENTAL`** |
 
-### 6.5 数据恢复
-
-#### 6.5.1 从备份恢复
-
-**POST** `/api/v1/backup/restore/{objectId}`
-*objectId 为备份记录 ID。*
-
-**Response**
+**Response (200)** — 分页结构见 **§1.4**；`records[]` 为 **`BackupRecordVO`**：
 
 ```json
 {
   "code": 200,
+  "message": "success",
   "data": {
-    "restoreTaskId": "restore-uuid",
+    "records": [
+      {
+        "objectId": "b550e8400-e29b-41d4-a716-446655440001",
+        "backupType": "FULL",
+        "fileSize": 3567890,
+        "status": "SUCCESS",
+        "description": "2026年5月6日手动全量备份",
+        "operatorId": "u-admin-001",
+        "operatorName": "admin",
+        "createTime": "2026-05-06T14:35:12"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10
+  }
+}
+```
+
+##### 6.2.6.2 详情（含下载 URL）
+
+**GET** `/api/v1/backup/records/{objectId}`
+
+- 路径参数 **`objectId`** 为**备份记录**主键。  
+- 不存在：**404**。  
+- **`downloadUrl`** 由服务端根据当前请求的 scheme/host/port 拼接为 **`{baseUrl}/api/v1/backup/records/{objectId}/download`**（供前端展示；实际下载见下节）。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "b550e8400-e29b-41d4-a716-446655440001",
+    "backupType": "FULL",
+    "filePath": "/path/to/backups/b550e8400-e29b-41d4-a716-446655440001_FULL_20260506143512.sql.gz",
+    "fileSize": 3567890,
+    "status": "SUCCESS",
+    "description": "2026年5月6日手动全量备份",
+    "operatorId": "u-admin-001",
+    "operatorName": "admin",
+    "downloadUrl": "http://localhost:8080/api/v1/backup/records/b550e8400-e29b-41d4-a716-446655440001/download",
+    "createTime": "2026-05-06T14:35:12"
+  }
+}
+```
+
+##### 6.2.6.3 下载备份文件
+
+**GET** `/api/v1/backup/records/{objectId}/download`
+
+- **权限**：同 **§6.2.1**（**ADMIN** + Token）。  
+- 仅当记录 **`status=SUCCESS`** 且磁盘文件存在时可下载；否则 **`code`** **4001**，`message`：**「备份文件不存在」**。  
+- **响应格式**：**非** `Result` 包装；**HTTP 200**，`Content-Type: application/octet-stream`，`Content-Disposition: attachment; filename="..."`（文件名为落盘文件名）。  
+- 客户端须携带与 JSON 接口相同的 **`Authorization`** Header。
+
+##### 6.2.6.4 删除备份
+
+**DELETE** `/api/v1/backup/records/{objectId}`
+
+- 删除 **`backup_record`** 行，并尝试删除磁盘上的 **`.sql.gz`** 文件。  
+- 记录 **`status=IN_PROGRESS`**：**409**，`message`：**「备份任务进行中，无法删除」**。  
+- 不存在：**404**。  
+- 成功 **`data`**：
+
+```json
+{
+  "objectId": "b550e8400-e29b-41d4-a716-446655440001",
+  "deleted": true
+}
+```
+
+#### 6.2.7 数据恢复
+
+##### 6.2.7.1 发起恢复
+
+**POST** `/api/v1/backup/restore/{objectId}`
+
+- 路径参数 **`objectId`** 为**备份记录 ID**（非恢复任务 ID）。  
+- 仅 **`status=SUCCESS`** 且备份文件存在时可恢复；否则 **`code`** **4001**。  
+- 与进行中的备份/恢复互斥：**409**（见 **§6.2.3**）。  
+- **异步执行**：立即返回恢复任务；后台通过 **`mysql`** 客户端导入 **`.sql.gz`**，完成后任务状态变为 **`SUCCESS`** 或 **`FAILED`**。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "restoreTaskId": "restore-660e8400-e29b-41d4-a716-446655440002",
+    "backupRecordId": "b550e8400-e29b-41d4-a716-446655440001",
     "status": "PROCESSING"
   }
 }
 ```
 
-### 6.6 存储信息
+##### 6.2.7.2 查询恢复任务状态
 
-#### 6.6.1 获取备份存储信息
+**GET** `/api/v1/backup/restore/{restoreTaskId}`
 
-**GET** `/api/v1/backup/storage-info`
-
-**Response**
+- 路径参数 **`restoreTaskId`** 为 **§6.2.7.1** 响应中的任务 ID。  
+- 任务不存在（已过期或未创建）：**404**。  
+- **Response (200)**：`data` 为 **`RestoreTaskVO`**（结构同发起恢复响应）。
 
 ```json
 {
   "code": 200,
+  "message": "success",
   "data": {
-    "totalSpaceMB": 20480,
-    "usedSpaceMB": 3560,
-    "backupCount": 12
+    "restoreTaskId": "restore-660e8400-e29b-41d4-a716-446655440002",
+    "backupRecordId": "b550e8400-e29b-41d4-a716-446655440001",
+    "status": "SUCCESS"
   }
 }
 ```
+
+> **注意**：恢复任务状态保存在服务端内存（`RestoreTaskStore`），进程重启后历史任务 ID 不可查；客户端应在发起恢复后短期内轮询，或在 UI 上提示「服务重启后无法查询历史恢复任务」。
+
+#### 6.2.8 存储信息
+
+**GET** `/api/v1/backup/storage-info`
+
+- **`backupCount`**：当前库中 **`status=SUCCESS`** 的备份记录条数。  
+- **`usedSpaceMB`** / **`availableSpaceMB`**：根据落盘目录实际文件大小与 **`app.backup.total-space-mb`** 计算。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "totalSpaceMB": 20480,
+    "usedSpaceMB": 3560,
+    "backupCount": 12,
+    "availableSpaceMB": 16920
+  }
+}
+```
+
+#### 6.2.9 配置项（`app.backup`）
+
+| 配置键 | 默认值（示例） | 说明 |
+| :--- | :--- | :--- |
+| `storage-directory` | `""` | 备份落盘目录；空则 classpath **`backups`** |
+| `total-space-mb` | `20480` | 配额上限（MB），用于空间校验与 **`storage-info`** |
+| `mysqldump-path` | `mysqldump` | 宿主机客户端路径 |
+| `mysql-path` | `mysql` | 恢复用客户端路径 |
+| `docker-container` | `""` | 非空时通过 **`docker exec`** 在容器内执行 dump/restore（开发可设 **`dev-mysql`**） |
+| `retention-days` | `30` | 保留策略（若实现定时清理） |
+| `max-concurrent-backups` | `1` | 最大并发备份数（与互斥逻辑配合） |
+| `in-progress-timeout-minutes` | `10` | **`IN_PROGRESS`** 超时对账阈值（分钟） |
+
+#### 6.2.10 错误与行为小结
+
+| 场景 | HTTP | code |
+| :--- | :--- | :--- |
+| 未认证 / Token 无效 | 401 | 401 |
+| 非 **ADMIN** | 403 | 403 |
+| 参数校验失败、Cron 非法、pageSize 超 **100** | 400 | 400 |
+| 备份记录 / 定时任务 / 恢复任务不存在 | 404 | 404 |
+| 备份进行中无法删除、备份/恢复并发冲突 | 409 | 409 |
+| 备份文件不存在或状态非 **SUCCESS** 无法下载/恢复 | 200 | **4001** |
+| 存储空间不足、dump/restore 执行失败等 | 200 | **500**（或业务 **4002** 用于恢复失败场景，以实现为准） |
+
+> **§1.5** 中 **`4001`**（备份文件不存在）、**`4002`**（恢复失败）为业务扩展码，出现在响应体 **`code`** 字段；**HTTP** 状态码与全局 **`Result`** 约定一致（多数为 **200** + body **`code`**）。
 
 ---
 
