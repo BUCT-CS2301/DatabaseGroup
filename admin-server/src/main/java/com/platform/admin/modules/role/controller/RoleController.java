@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/roles")
@@ -26,87 +27,173 @@ public class RoleController {
     }
 
     @GetMapping
-    public Result<IPage<Role>> list(
+    public Result<Map<String, Object>> list(
             @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        Page<Role> pageRequest = new Page<>(page, size);
+        Page<Role> pageRequest = new Page<>(page, pageSize);
         QueryWrapper<Role> wrapper = new QueryWrapper<>();
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.like("role_name", keyword).or().like("role_code", keyword);
         }
         wrapper.orderByDesc("create_time");
         IPage<Role> result = roleService.page(pageRequest, wrapper);
-        return Result.success(result);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", result.getRecords().stream().map(role -> {
+            Map<String, Object> roleMap = new HashMap<>();
+            roleMap.put("objectId", role.getObjectId());
+            roleMap.put("roleName", role.getRoleName());
+            roleMap.put("roleCode", role.getRoleCode());
+            roleMap.put("description", role.getDescription());
+            roleMap.put("isSystem", role.getIsSystem() == 1);
+            roleMap.put("createTime", role.getCreateTime());
+            roleMap.put("updateTime", role.getUpdateTime());
+            return roleMap;
+        }).toList());
+        data.put("total", result.getTotal());
+        data.put("page", result.getCurrent());
+        data.put("pageSize", result.getSize());
+        
+        return Result.success(data);
     }
 
     @GetMapping("/all")
-    public Result<List<Role>> getAllRoles() {
+    public Result<List<Map<String, Object>>> getAllRoles() {
         List<Role> roles = roleService.getAllRoles();
-        return Result.success(roles);
+        List<Map<String, Object>> result = roles.stream().map(role -> {
+            Map<String, Object> roleMap = new HashMap<>();
+            roleMap.put("objectId", role.getObjectId());
+            roleMap.put("roleName", role.getRoleName());
+            roleMap.put("roleCode", role.getRoleCode());
+            return roleMap;
+        }).collect(Collectors.toList());
+        return Result.success(result);
     }
 
-    @GetMapping("/{id}")
-    public Result<Role> getById(@PathVariable String id) {
-        Role role = roleService.getById(id);
+    @GetMapping("/{objectId}")
+    public Result<Map<String, Object>> getById(@PathVariable String objectId) {
+        Role role = roleService.getById(objectId);
         if (role == null) {
             return Result.error(ErrorCode.NOT_FOUND, "角色不存在");
         }
-        return Result.success(role);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", role.getObjectId());
+        data.put("roleName", role.getRoleName());
+        data.put("roleCode", role.getRoleCode());
+        data.put("description", role.getDescription());
+        data.put("isSystem", role.getIsSystem() == 1);
+        data.put("createTime", role.getCreateTime());
+        data.put("updateTime", role.getUpdateTime());
+        
+        return Result.success(data);
     }
 
-    @GetMapping("/code/{code}")
-    public Result<Role> getByCode(@PathVariable String code) {
-        Role role = roleService.getByCode(code);
+    @GetMapping("/code/{roleCode}")
+    public Result<Map<String, Object>> getByCode(@PathVariable String roleCode) {
+        Role role = roleService.getByCode(roleCode);
         if (role == null) {
             return Result.error(ErrorCode.NOT_FOUND, "角色不存在");
         }
-        return Result.success(role);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", role.getObjectId());
+        data.put("roleName", role.getRoleName());
+        data.put("roleCode", role.getRoleCode());
+        data.put("description", role.getDescription());
+        data.put("isSystem", role.getIsSystem() == 1);
+        
+        return Result.success(data);
     }
 
     @PostMapping
-    public Result<Role> create(@RequestBody Role role) {
-        Role existing = roleService.getByCode(role.getRoleCode());
+    public Result<Map<String, Object>> create(@RequestBody Map<String, Object> request) {
+        String roleName = (String) request.get("roleName");
+        String roleCode = (String) request.get("roleCode");
+        String description = (String) request.get("description");
+        
+        Role existing = roleService.getByCode(roleCode);
         if (existing != null) {
-            return Result.error(ErrorCode.CONFLICT, "角色编码已存在");
+            return Result.error(2001, "角色名称已存在");
         }
+        
+        Role role = new Role();
         role.setObjectId(UUID.randomUUID().toString());
+        role.setRoleName(roleName);
+        role.setRoleCode(roleCode);
+        role.setDescription(description);
         role.setIsSystem(0);
         role.setCreateTime(LocalDateTime.now());
         role.setUpdateTime(LocalDateTime.now());
+        
         roleService.save(role);
-        return Result.success(role);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", role.getObjectId());
+        data.put("roleName", role.getRoleName());
+        data.put("roleCode", role.getRoleCode());
+        data.put("description", role.getDescription());
+        data.put("isSystem", false);
+        data.put("createTime", role.getCreateTime());
+        
+        return Result.success(data);
     }
 
-    @PutMapping("/{id}")
-    public Result<Role> update(@PathVariable String id, @RequestBody Role role) {
-        Role existing = roleService.getById(id);
+    @PutMapping("/{objectId}")
+    public Result<Map<String, Object>> update(@PathVariable String objectId, @RequestBody Map<String, Object> request) {   
+        Role existing = roleService.getById(objectId);
         if (existing == null) {
             return Result.error(ErrorCode.NOT_FOUND, "角色不存在");
         }
-        if (!existing.getRoleCode().equals(role.getRoleCode())) {
-            Role check = roleService.getByCode(role.getRoleCode());
-            if (check != null && !check.getObjectId().equals(id)) {
-                return Result.error(ErrorCode.CONFLICT, "角色编码已存在");
-            }
-        }
-        role.setObjectId(id);
-        role.setIsSystem(existing.getIsSystem());
-        role.setUpdateTime(LocalDateTime.now());
-        roleService.updateById(role);
-        return Result.success(role);
+        
+        String roleName = (String) request.get("roleName");
+        String description = (String) request.get("description");
+        
+        existing.setRoleName(roleName);
+        existing.setDescription(description);
+        existing.setUpdateTime(LocalDateTime.now());
+        
+        roleService.updateById(existing);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", existing.getObjectId());
+        data.put("roleName", existing.getRoleName());
+        data.put("roleCode", existing.getRoleCode());
+        data.put("description", existing.getDescription());
+        data.put("isSystem", existing.getIsSystem() == 1);
+        data.put("updateTime", existing.getUpdateTime());
+        
+        return Result.success(data);
     }
 
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable String id) {
-        Role role = roleService.getById(id);
+    @DeleteMapping("/{objectId}")
+    public Result<Void> delete(@PathVariable String objectId) {
+        Role role = roleService.getById(objectId);
         if (role == null) {
             return Result.error(ErrorCode.NOT_FOUND, "角色不存在");
         }
         if (role.getIsSystem() == 1) {
-            return Result.error(ErrorCode.FORBIDDEN, "系统角色不能删除");
+            return Result.error(2002, "角色不可删除");
         }
-        roleService.removeById(id);
+        roleService.removeById(objectId);
         return Result.success(null);
+    }
+
+    @GetMapping("/{objectId}/permissions")
+    public Result<List<Map<String, Object>>> getRolePermissions(@PathVariable String objectId) {
+        List<Map<String, Object>> permissions = List.of();
+        return Result.success(permissions);
+    }
+
+    @PutMapping("/{objectId}/permissions")
+    public Result<Void> setRolePermissions(@PathVariable String objectId, @RequestBody Map<String, List<String>> request) {
+        return Result.success(null);
+    }
+
+    @GetMapping("/permissions")
+    public Result<List<Map<String, Object>>> getAllPermissions() {
+        List<Map<String, Object>> permissions = List.of();
+        return Result.success(permissions);
     }
 }

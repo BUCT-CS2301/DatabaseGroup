@@ -9,11 +9,15 @@ import com.platform.admin.modules.audit.entity.ContentAudit;
 import com.platform.admin.modules.audit.service.ContentAuditService;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/content-audits")
+@RequestMapping("/api/v1/audit")
 public class ContentAuditController {
 
     private final ContentAuditService contentAuditService;
@@ -22,70 +26,168 @@ public class ContentAuditController {
         this.contentAuditService = contentAuditService;
     }
 
-    @GetMapping
-    public Result<IPage<ContentAudit>> list(
+    @GetMapping("/rules")
+    public Result<Map<String, Object>> getAuditRules() {
+        Map<String, Object> rules = new HashMap<>();
+        rules.put("textAutoAuditEnabled", true);
+        rules.put("imageAutoAuditEnabled", true);
+        rules.put("sensitiveWordFilterEnabled", true);
+        rules.put("textAuditAction", "REJECT");
+        rules.put("imageAuditAction", "MANUAL");
+        return Result.success(rules);
+    }
+
+    @PutMapping("/rules")
+    public Result<Void> updateAuditRules(@RequestBody Map<String, Object> request) {
+        return Result.success(null);
+    }
+
+    @GetMapping("/queue")
+    public Result<Map<String, Object>> listQueue(
             @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "10") Integer size,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String contentType) {
-        Page<ContentAudit> pageRequest = new Page<>(page, size);
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status) {
+        Page<ContentAudit> pageRequest = new Page<>(page, pageSize);
         QueryWrapper<ContentAudit> wrapper = new QueryWrapper<>();
+        if (type != null && !type.isEmpty() && !"ALL".equals(type)) {
+            wrapper.eq("content_type", type);
+        }
         if (status != null && !status.isEmpty()) {
             wrapper.eq("status", status);
         }
-        if (contentType != null && !contentType.isEmpty()) {
-            wrapper.eq("content_type", contentType);
-        }
         wrapper.orderByDesc("submit_time");
         IPage<ContentAudit> result = contentAuditService.page(pageRequest, wrapper);
-        return Result.success(result);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", result.getRecords().stream().map(audit -> {
+            Map<String, Object> auditMap = new HashMap<>();
+            auditMap.put("objectId", audit.getObjectId());
+            auditMap.put("type", audit.getContentType());
+            auditMap.put("content", audit.getContentText());
+            Map<String, Object> author = new HashMap<>();
+            author.put("objectId", audit.getAuthorId());
+            auditMap.put("author", author);
+            auditMap.put("autoAuditResult", audit.getAutoAuditResult());
+            auditMap.put("status", audit.getStatus());
+            auditMap.put("submitTime", audit.getSubmitTime());
+            return auditMap;
+        }).toList());
+        data.put("total", result.getTotal());
+        data.put("page", result.getCurrent());
+        data.put("pageSize", result.getSize());
+        
+        return Result.success(data);
     }
 
-    @GetMapping("/{id}")
-    public Result<ContentAudit> getById(@PathVariable String id) {
-        ContentAudit audit = contentAuditService.getById(id);
+    @GetMapping("/queue/{objectId}")
+    public Result<Map<String, Object>> getAuditDetail(@PathVariable String objectId) {
+        ContentAudit audit = contentAuditService.getById(objectId);
         if (audit == null) {
-            return Result.error(ErrorCode.NOT_FOUND, "审核记录不存在");
+            return Result.error(3001, "待审核内容不存在");
         }
-        return Result.success(audit);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", audit.getObjectId());
+        data.put("type", audit.getContentType());
+        data.put("content", audit.getContentText());
+        data.put("contentUrl", audit.getContentUrl());
+        Map<String, Object> author = new HashMap<>();
+        author.put("objectId", audit.getAuthorId());
+        data.put("author", author);
+        data.put("autoAuditResult", audit.getAutoAuditResult());
+        data.put("autoAuditDetail", audit.getAutoAuditDetail());
+        data.put("status", audit.getStatus());
+        data.put("submitTime", audit.getSubmitTime());
+        data.put("auditRemark", audit.getAuditRemark());
+        data.put("rejectReason", audit.getRejectReason());
+        
+        return Result.success(data);
     }
 
-    @PostMapping
-    public Result<ContentAudit> submit(@RequestBody Map<String, String> request) {
-        String content = request.get("content");
-        String contentType = request.get("contentType");
-        String authorId = request.get("authorId");
-        ContentAudit audit = contentAuditService.submitForAudit(content, contentType, authorId);
-        return Result.success(audit);
+    @PostMapping("/queue/{objectId}/approve")
+    public Result<Void> approve(@PathVariable String objectId, @RequestBody(required = false) Map<String, String> request) {
+        ContentAudit audit = contentAuditService.getById(objectId);
+        if (audit == null) {
+            return Result.error(3001, "待审核内容不存在");
+        }
+        
+        String remark = request != null ? request.get("remark") : null;
+        contentAuditService.audit(objectId, null, "PASS", remark, null);
+        
+        return Result.success(null);
     }
 
-    @PutMapping("/{id}/audit")
-    public Result<ContentAudit> audit(@PathVariable String id, @RequestBody Map<String, String> request) {
-        String auditorId = request.get("auditorId");
-        String auditResult = request.get("auditResult");
+    @PostMapping("/queue/{objectId}/reject")
+    public Result<Void> reject(@PathVariable String objectId, @RequestBody Map<String, String> request) {
+        ContentAudit audit = contentAuditService.getById(objectId);
+        if (audit == null) {
+            return Result.error(3001, "待审核内容不存在");
+        }
+        
+        String reason = request.get("reason");
         String remark = request.get("remark");
-        String rejectReason = request.get("rejectReason");
-        ContentAudit audit = contentAuditService.audit(id, auditorId, auditResult, remark, rejectReason);
-        if (audit == null) {
-            return Result.error(ErrorCode.NOT_FOUND, "审核记录不存在");
-        }
-        return Result.success(audit);
+        contentAuditService.audit(objectId, null, "REJECT", remark, reason);
+        
+        return Result.success(null);
     }
 
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable String id) {
-        if (!contentAuditService.removeById(id)) {
-            return Result.error(ErrorCode.NOT_FOUND, "审核记录不存在");
+    @PostMapping("/queue/batch-approve")
+    public Result<Void> batchApprove(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<String> objectIds = (List<String>) request.get("objectIds");
+        String remark = (String) request.get("remark");
+        
+        for (String objectId : objectIds) {
+            contentAuditService.audit(objectId, null, "PASS", remark, null);
         }
+        
+        return Result.success(null);
+    }
+
+    @PostMapping("/queue/batch-reject")
+    public Result<Void> batchReject(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<String> objectIds = (List<String>) request.get("objectIds");
+        String reason = (String) request.get("reason");
+        
+        for (String objectId : objectIds) {
+            contentAuditService.audit(objectId, null, "REJECT", null, reason);
+        }
+        
         return Result.success(null);
     }
 
     @GetMapping("/statistics")
-    public Result<Map<String, Long>> getStatistics() {
-        Map<String, Long> stats = new HashMap<>();
-        stats.put("pending", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "PENDING")));
-        stats.put("approved", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "APPROVED")));
-        stats.put("rejected", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "REJECTED")));
+    public Result<Map<String, Object>> getStatistics(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalSubmitted", contentAuditService.count(new QueryWrapper<>()));
+        stats.put("autoApproved", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("auto_audit_result", "PASS")));
+        stats.put("autoRejected", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("auto_audit_result", "REJECT")));
+        stats.put("manualApproved", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "APPROVED")));
+        stats.put("manualRejected", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "REJECTED")));
+        stats.put("pendingCount", contentAuditService.count(new QueryWrapper<ContentAudit>().eq("status", "PENDING")));
+        
         return Result.success(stats);
+    }
+
+    @PostMapping("/queue")
+    public Result<Map<String, Object>> submitForAudit(@RequestBody Map<String, Object> request) {
+        String content = (String) request.get("content");
+        String contentType = (String) request.get("contentType");
+        String authorId = (String) request.get("authorId");
+        
+        ContentAudit audit = contentAuditService.submitForAudit(content, contentType, authorId);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", audit.getObjectId());
+        data.put("type", audit.getContentType());
+        data.put("content", audit.getContentText());
+        data.put("status", audit.getStatus());
+        data.put("submitTime", audit.getSubmitTime());
+        
+        return Result.success(data);
     }
 }

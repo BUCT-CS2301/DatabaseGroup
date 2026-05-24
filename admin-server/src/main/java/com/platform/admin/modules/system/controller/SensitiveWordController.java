@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/sensitive-words")
+@RequestMapping("/api/v1/config/sensitive-words")
 public class SensitiveWordController {
 
     private final SensitiveWordService sensitiveWordService;
@@ -23,49 +23,67 @@ public class SensitiveWordController {
     }
 
     @GetMapping
-    public Result<IPage<SensitiveWord>> list(
+    public Result<Map<String, Object>> list(
             @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "50") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        Page<SensitiveWord> pageRequest = new Page<>(page, size);
+        Page<SensitiveWord> pageRequest = new Page<>(page, pageSize);
         QueryWrapper<SensitiveWord> wrapper = new QueryWrapper<>();
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.like("word", keyword);
         }
         wrapper.orderByDesc("create_time");
         IPage<SensitiveWord> result = sensitiveWordService.page(pageRequest, wrapper);
-        return Result.success(result);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", result.getRecords().stream().map(word -> {
+            Map<String, Object> wordMap = new HashMap<>();
+            wordMap.put("objectId", word.getObjectId());
+            wordMap.put("word", word.getWord());
+            wordMap.put("createTime", word.getCreateTime());
+            return wordMap;
+        }).toList());
+        data.put("total", result.getTotal());
+        data.put("page", result.getCurrent());
+        data.put("pageSize", result.getSize());
+        
+        return Result.success(data);
     }
 
-    @GetMapping("/{id}")
-    public Result<SensitiveWord> getById(@PathVariable String id) {
-        SensitiveWord word = sensitiveWordService.getById(id);
+    @GetMapping("/{objectId}")
+    public Result<Map<String, Object>> getById(@PathVariable String objectId) {
+        SensitiveWord word = sensitiveWordService.getById(objectId);
         if (word == null) {
             return Result.error(ErrorCode.NOT_FOUND, "敏感词不存在");
         }
-        return Result.success(word);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", word.getObjectId());
+        data.put("word", word.getWord());
+        data.put("createTime", word.getCreateTime());
+        
+        return Result.success(data);
     }
 
     @PostMapping
-    public Result<SensitiveWord> create(@RequestBody SensitiveWord word) {
-        sensitiveWordService.save(word);
-        return Result.success(word);
+    public Result<Map<String, Object>> create(@RequestBody Map<String, String> request) {
+        String word = request.get("word");
+        
+        SensitiveWord sensitiveWord = new SensitiveWord();
+        sensitiveWord.setWord(word);
+        sensitiveWordService.save(sensitiveWord);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", sensitiveWord.getObjectId());
+        data.put("word", sensitiveWord.getWord());
+        data.put("createTime", sensitiveWord.getCreateTime());
+        
+        return Result.success(data);
     }
 
-    @PutMapping("/{id}")
-    public Result<SensitiveWord> update(@PathVariable String id, @RequestBody SensitiveWord word) {
-        SensitiveWord existing = sensitiveWordService.getById(id);
-        if (existing == null) {
-            return Result.error(ErrorCode.NOT_FOUND, "敏感词不存在");
-        }
-        word.setObjectId(id);
-        sensitiveWordService.updateById(word);
-        return Result.success(word);
-    }
-
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable String id) {
-        if (!sensitiveWordService.removeById(id)) {
+    @DeleteMapping("/{objectId}")
+    public Result<Void> delete(@PathVariable String objectId) {
+        if (!sensitiveWordService.removeById(objectId)) {
             return Result.error(ErrorCode.NOT_FOUND, "敏感词不存在");
         }
         return Result.success(null);

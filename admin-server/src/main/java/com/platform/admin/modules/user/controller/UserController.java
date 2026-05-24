@@ -26,66 +26,142 @@ public class UserController {
     }
 
     @GetMapping
-    public Result<IPage<User>> list(
+    public Result<Map<String, Object>> list(
             @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "10") Integer size,
-            @RequestParam(required = false) String keyword) {
-        Page<User> pageRequest = new Page<>(page, size);
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String role) {
+        Page<User> pageRequest = new Page<>(page, pageSize);
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.select(User.class, info -> !info.getColumn().equals("password_hash"));
         wrapper.eq("is_deleted", 0);
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.like("username", keyword).or().like("nickname", keyword).or().like("email", keyword);
         }
+        if (status != null && !status.isEmpty()) {
+            wrapper.eq("status", status);
+        }
         wrapper.orderByDesc("create_time");
         IPage<User> result = userService.page(pageRequest, wrapper);
-        return Result.success(result);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", result.getRecords().stream().map(user -> {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("objectId", user.getObjectId());
+            userMap.put("username", user.getUsername());
+            userMap.put("nickname", user.getNickname());
+            userMap.put("email", user.getEmail());
+            userMap.put("phone", user.getPhone());
+            userMap.put("status", user.getStatus());
+            userMap.put("roles", new String[]{user.getUserType()});
+            userMap.put("lastLoginTime", user.getLastLoginTime());
+            userMap.put("createTime", user.getCreateTime());
+            return userMap;
+        }).toList());
+        data.put("total", result.getTotal());
+        data.put("page", result.getCurrent());
+        data.put("pageSize", result.getSize());
+        
+        return Result.success(data);
     }
 
-    @GetMapping("/{id}")
-    public Result<User> getById(@PathVariable String id) {
-        User user = userService.getById(id);
+    @GetMapping("/{objectId}")
+    public Result<Map<String, Object>> getById(@PathVariable String objectId) {
+        User user = userService.getById(objectId);
         if (user == null || user.getIsDeleted() == 1) {
             return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
         }
-        user.setPasswordHash(null);
-        return Result.success(user);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", user.getObjectId());
+        data.put("username", user.getUsername());
+        data.put("nickname", user.getNickname());
+        data.put("email", user.getEmail());
+        data.put("phone", user.getPhone());
+        data.put("status", user.getStatus());
+        data.put("roles", new String[]{user.getUserType()});
+        data.put("lastLoginTime", user.getLastLoginTime());
+        data.put("createTime", user.getCreateTime());
+        
+        return Result.success(data);
     }
 
     @PostMapping
-    public Result<User> create(@RequestBody User user) {
-        User existing = userService.getByUsername(user.getUsername());
+    public Result<Map<String, Object>> create(@RequestBody Map<String, Object> request) {
+        String username = (String) request.get("username");
+        String password = (String) request.get("password");
+        String nickname = (String) request.get("nickname");
+        String email = (String) request.get("email");
+        String phone = (String) request.get("phone");
+        
+        User existing = userService.getByUsername(username);
         if (existing != null) {
             return Result.error(ErrorCode.CONFLICT, "用户名已存在");
         }
-        User created = userService.register(user);
-        return Result.success(created);
+        
+        User user = new User();
+        user.setObjectId(UUID.randomUUID().toString());
+        user.setUsername(username);
+        user.setPasswordHash(password);
+        user.setNickname(nickname);
+        user.setEmail(email);
+        user.setPhone(phone);
+        user.setUserType("ADMIN");
+        user.setStatus("ENABLED");
+        user.setIsDeleted(0);
+        user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+        
+        userService.register(user);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", user.getObjectId());
+        data.put("username", user.getUsername());
+        data.put("nickname", user.getNickname());
+        data.put("email", user.getEmail());
+        data.put("phone", user.getPhone());
+        data.put("status", user.getStatus());
+        data.put("roles", new String[]{user.getUserType()});
+        data.put("createTime", user.getCreateTime());
+        
+        return Result.success(data);
     }
 
-    @PutMapping("/{id}")
-    public Result<User> update(@PathVariable String id, @RequestBody User user) {
-        User existing = userService.getById(id);
+    @PutMapping("/{objectId}")
+    public Result<Map<String, Object>> update(@PathVariable String objectId, @RequestBody Map<String, Object> request) {   
+        User existing = userService.getById(objectId);
         if (existing == null || existing.getIsDeleted() == 1) {
             return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
         }
-        if (!existing.getUsername().equals(user.getUsername())) {
-            User check = userService.getByUsername(user.getUsername());
-            if (check != null && !check.getObjectId().equals(id)) {
-                return Result.error(ErrorCode.CONFLICT, "用户名已存在");
-            }
-        }
-        user.setObjectId(id);
-        user.setPasswordHash(existing.getPasswordHash());
-        user.setIsDeleted(0);
-        user.setUpdateTime(LocalDateTime.now());
-        userService.updateById(user);
-        user.setPasswordHash(null);
-        return Result.success(user);
+        
+        String nickname = (String) request.get("nickname");
+        String email = (String) request.get("email");
+        String phone = (String) request.get("phone");
+        
+        existing.setNickname(nickname);
+        existing.setEmail(email);
+        existing.setPhone(phone);
+        existing.setUpdateTime(LocalDateTime.now());
+        
+        userService.updateById(existing);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", existing.getObjectId());
+        data.put("username", existing.getUsername());
+        data.put("nickname", existing.getNickname());
+        data.put("email", existing.getEmail());
+        data.put("phone", existing.getPhone());
+        data.put("status", existing.getStatus());
+        data.put("roles", new String[]{existing.getUserType()});
+        data.put("updateTime", existing.getUpdateTime());
+        
+        return Result.success(data);
     }
 
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable String id) {
-        User user = userService.getById(id);
+    @DeleteMapping("/{objectId}")
+    public Result<Void> delete(@PathVariable String objectId) {
+        User user = userService.getById(objectId);
         if (user == null || user.getIsDeleted() == 1) {
             return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
         }
@@ -95,63 +171,35 @@ public class UserController {
         return Result.success(null);
     }
 
-    @PostMapping("/login")
-    public Result<Map<String, Object>> login(@RequestBody Map<String, String> request, HttpServletRequest httpRequest) {
-        String username = request.get("username");
-        String password = request.get("password");
-        User user = userService.login(username, password);
-        if (user == null) {
-            return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
-        }
-        String ip = getClientIp(httpRequest);
-        userService.updateLoginInfo(user.getObjectId(), ip);
-        user.setPasswordHash(null);
-        Map<String, Object> result = new HashMap<>();
-        result.put("user", user);
-        return Result.success(result);
-    }
-
-    @PostMapping("/{id}/change-password")
-    public Result<Void> changePassword(@PathVariable String id, @RequestBody Map<String, String> request) {
-        String oldPassword = request.get("oldPassword");
-        String newPassword = request.get("newPassword");
-        boolean success = userService.changePassword(id, oldPassword, newPassword);
-        if (!success) {
-            return Result.error(ErrorCode.BAD_REQUEST, "原密码不正确");
-        }
-        return Result.success(null);
-    }
-
-    @PutMapping("/{id}/status")
-    public Result<User> updateStatus(@PathVariable String id, @RequestBody Map<String, String> request) {
-        User user = userService.getById(id);
+    @PutMapping("/{objectId}/status")
+    public Result<Map<String, Object>> updateStatus(@PathVariable String objectId, @RequestBody Map<String, String> request) {
+        User user = userService.getById(objectId);
         if (user == null || user.getIsDeleted() == 1) {
             return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
         }
-        user.setStatus(request.get("status"));
+        
+        String status = request.get("status");
+        user.setStatus(status);
         user.setUpdateTime(LocalDateTime.now());
         userService.updateById(user);
-        user.setPasswordHash(null);
-        return Result.success(user);
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", user.getObjectId());
+        data.put("status", user.getStatus());
+        
+        return Result.success(data);
     }
 
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
+    @GetMapping("/{objectId}/logs")
+    public Result<Map<String, Object>> getUserLogs(
+            @PathVariable String objectId,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", new Object[]{});
+        data.put("total", 0);
+        data.put("page", page);
+        data.put("pageSize", pageSize);
+        return Result.success(data);
     }
 }
