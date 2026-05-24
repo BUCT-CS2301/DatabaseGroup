@@ -35,11 +35,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                        "/api/v1/data/relics/**",
-                        "/api/v1/data/museums/**",
-                        "/api/v1/backup/**"
-                ).authenticated()
+                .requestMatchers("/api/v1/data/relics/**", "/api/v1/data/museums/**").authenticated()
                 .anyRequest().permitAll()
             )
             .csrf(csrf -> csrf.disable())

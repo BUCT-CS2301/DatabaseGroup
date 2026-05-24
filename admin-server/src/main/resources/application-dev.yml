@@ -3,9 +3,6 @@ app:
   relics:
     # 本地联调用对外基址，与 image_path 拼接为完整 image_url（生产环境勿写死域名，用各环境配置覆盖）
     image-public-base-url: "http://localhost:8080"
-  backup:
-    # MySQL 跑在 Docker 时，通过容器内 mysqldump 备份，避免宿主机 PATH/客户端版本问题
-    docker-container: dev-mysql
 spring:
   datasource:
     # Java Charset 须用 UTF-8；utf8mb4 仅适用于 MySQL 服务端字符集，不能写在 characterEncoding 里

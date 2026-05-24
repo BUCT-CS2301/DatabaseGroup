@@ -10,6 +10,4 @@ public class ErrorCode {
     /** 资源冲突（如外键约束禁止删除） */
     public static final int CONFLICT = 409;
     public static final int INTERNAL_ERROR = 500;
-    public static final int BACKUP_FILE_NOT_FOUND = 4001;
-    public static final int RESTORE_FAILED = 4002;
 }
