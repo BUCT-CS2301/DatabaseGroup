@@ -1,0 +1,18 @@
+# dev：未接登录时可调用 GET /api/v1/auth/mock-token 获取联调 JWT（仅 profile=dev 时注册）
+app:
+  relics:
+    # 本地联调用对外基址，与 image_path 拼接为完整 image_url（生产环境勿写死域名，用各环境配置覆盖）
+    image-public-base-url: "http://localhost:8080"
+spring:
+  datasource:
+    # Java Charset 须用 UTF-8；utf8mb4 仅适用于 MySQL 服务端字符集，不能写在 characterEncoding 里
+    url: jdbc:mysql://localhost:3306/admin_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 643114514
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: localhost
+    port: 6379
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

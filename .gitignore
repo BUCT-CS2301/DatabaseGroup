@@ -1,0 +1,52 @@
+# ===================
+# IDE 配置
+# ===================
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===================
+# 前端
+# ===================
+node_modules/
+dist/
+.env.local
+.env.*.local
+
+# ===================
+# 后端 (Maven/Gradle)
+# ===================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.jar
+*.war
+logs/
+*.log
+
+# ===================
+# 系统文件
+# ===================
+.DS_Store
+Thumbs.db
+
+# ===================
+# Docker (运行时数据不提交)
+# ===================
+docker/volumes/
+
+# 如果需要在 docker-compose 中 mount 本地目录，忽略运行时产生的临时文件
+docker/mysql/data/
+
+# ===================
+# 其他
+# ===================
+*.tmp
+*.bak
+
+# cursor rule file
+.cursor/
+.agents/
+AGENTS.md

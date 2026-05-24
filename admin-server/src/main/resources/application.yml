@@ -1,0 +1,20 @@
+spring:
+  profiles:
+    active: dev
+  application:
+    name: admin-server
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+server:
+  port: 8080
+
+# 文物图片落盘目录；留空则开发模式下使用 classpath:relics-images（一般为 target/classes/relics-images）
+app:
+  relic-images:
+    directory: ""
+  # 创建文物时自动生成 image_path / image_url（PRD）；image-public-base-url 建议在 application-dev.yml 等环境文件中配置
+  relics:
+    default-image-extension: jpg
+    image-public-base-url: ""
