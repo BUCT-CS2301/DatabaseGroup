@@ -8,6 +8,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -29,13 +30,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtProvider jwtProvider;
     private final UserMapper userMapper;
     private final LogPermissionResolver logPermissionResolver;
+    private final boolean trustMockTokenClaims;
 
     public JwtAuthenticationFilter(JwtProvider jwtProvider,
                                    UserMapper userMapper,
-                                   LogPermissionResolver logPermissionResolver) {
+                                   LogPermissionResolver logPermissionResolver,
+                                   @Value("${spring.profiles.active:}") String activeProfile) {
         this.jwtProvider = jwtProvider;
         this.userMapper = userMapper;
         this.logPermissionResolver = logPermissionResolver;
+        this.trustMockTokenClaims = activeProfile.contains("dev");
     }
 
     @Override
@@ -48,24 +52,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtProvider.validateToken(token)) {
                 Claims claims = jwtProvider.getClaims(token);
                 String userId = claims.getSubject();
+                String userTypeClaim = claims.get("userType", String.class);
                 User user = userMapper.selectById(userId);
                 if (user != null && !"DISABLED".equals(user.getStatus())) {
-                    UserType userType = UserType.fromValue(user.getUserType());
-                    List<String> logPermissions = logPermissionResolver.resolve(user);
-                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + userType.name()));
-                    logPermissions.forEach(permission ->
-                            authorities.add(new SimpleGrantedAuthority(permission))
-                    );
-                    AuthUser authUser = new AuthUser(userId, userType, Set.copyOf(logPermissions));
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            authUser, null, authorities
-                    );
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    establishAuthentication(userId, UserType.fromValue(user.getUserType()), logPermissionResolver.resolve(user), request);
+                } else if (trustMockTokenClaims) {
+                    // dev 环境 mock token 允许按 claim 放权，便于联调
+                    UserType userType = UserType.fromValue(userTypeClaim);
+                    User mockUser = new User();
+                    mockUser.setUserType(userType.name());
+                    mockUser.setStatus("ACTIVE");
+                    establishAuthentication(userId, userType, logPermissionResolver.resolve(mockUser), request);
                 }
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void establishAuthentication(
+            String userId,
+            UserType userType,
+            List<String> logPermissions,
+            HttpServletRequest request
+    ) {
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + userType.name()));
+        logPermissions.forEach(permission -> authorities.add(new SimpleGrantedAuthority(permission)));
+        AuthUser authUser = new AuthUser(userId, userType, Set.copyOf(logPermissions));
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                authUser, null, authorities
+        );
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }

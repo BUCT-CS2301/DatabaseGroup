@@ -3,7 +3,7 @@ package com.platform.admin.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.admin.common.ErrorCode;
 import com.platform.admin.common.Result;
-import com.platform.admin.modules.log.service.LogSecurityAuditService;
+import com.platform.admin.common.log.SecurityLogWriter;
 import com.platform.admin.modules.log.support.LogPermissions;
 import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.JwtAuthenticationFilter;
@@ -26,14 +26,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ObjectMapper objectMapper;
-    private final LogSecurityAuditService logSecurityAuditService;
+    private final SecurityLogWriter securityLogWriter;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           ObjectMapper objectMapper,
-                          LogSecurityAuditService logSecurityAuditService) {
+                          SecurityLogWriter securityLogWriter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.objectMapper = objectMapper;
-        this.logSecurityAuditService = logSecurityAuditService;
+        this.securityLogWriter = securityLogWriter;
     }
 
     @Bean
@@ -58,14 +58,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
-                    if (isLogApi(request)) {
-                        logSecurityAuditService.recordAccessDenied(
-                                resolveUserId(request),
-                                request.getRemoteAddr(),
-                                request.getRequestURI(),
-                                "UNAUTHORIZED"
-                        );
-                    }
+                    recordAccessDenied(request, "UNAUTHORIZED");
                     response.setStatus(401);
                     response.setCharacterEncoding("UTF-8");
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -74,14 +67,7 @@ public class SecurityConfig {
                     ));
                 })
                 .accessDeniedHandler((request, response, accessDeniedException) -> {
-                    if (isLogApi(request)) {
-                        logSecurityAuditService.recordAccessDenied(
-                                resolveUserId(request),
-                                request.getRemoteAddr(),
-                                request.getRequestURI(),
-                                "FORBIDDEN"
-                        );
-                    }
+                    recordAccessDenied(request, "FORBIDDEN");
                     response.setStatus(403);
                     response.setCharacterEncoding("UTF-8");
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -94,9 +80,14 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private boolean isLogApi(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        return uri != null && uri.startsWith("/api/v1/logs");
+    private void recordAccessDenied(HttpServletRequest request, String denyReason) {
+        securityLogWriter.writeAccessDenied(
+                resolveUserId(request),
+                request.getRemoteAddr(),
+                request.getRequestURI(),
+                request.getMethod(),
+                denyReason
+        );
     }
 
     private String resolveUserId(HttpServletRequest request) {
