@@ -2,13 +2,16 @@ package com.platform.admin.modules.auth.controller;
 
 import com.platform.admin.common.ErrorCode;
 import com.platform.admin.common.Result;
+import com.platform.admin.modules.log.support.LogPermissionResolver;
 import com.platform.admin.modules.user.entity.User;
 import com.platform.admin.modules.user.service.UserService;
 import com.platform.admin.security.JwtProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -17,10 +20,14 @@ public class AuthController {
 
     private final UserService userService;
     private final JwtProvider jwtProvider;
+    private final LogPermissionResolver logPermissionResolver;
 
-    public AuthController(UserService userService, JwtProvider jwtProvider) {
+    public AuthController(UserService userService,
+                          JwtProvider jwtProvider,
+                          LogPermissionResolver logPermissionResolver) {
         this.userService = userService;
         this.jwtProvider = jwtProvider;
+        this.logPermissionResolver = logPermissionResolver;
     }
 
     @PostMapping("/login")
@@ -71,7 +78,12 @@ public class AuthController {
                 data.put("nickname", user.getNickname());
                 data.put("avatar", user.getAvatar());
                 data.put("roles", new String[]{user.getUserType()});
-                data.put("permissions", new String[]{"user:read", "user:write", "role:read", "role:write", "audit:read", "audit:write", "config:read", "config:write"});
+                List<String> permissions = new ArrayList<>(List.of(
+                        "user:read", "user:write", "role:read", "role:write",
+                        "audit:read", "audit:write", "config:read", "config:write"
+                ));
+                permissions.addAll(logPermissionResolver.resolve(user));
+                data.put("permissions", permissions.toArray(new String[0]));
                 return Result.success(data);
             }
         }
