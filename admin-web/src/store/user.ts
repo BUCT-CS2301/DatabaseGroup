@@ -1,72 +1,110 @@
-﻿// import { defineStore } from 'pinia'
-// import { ref } from 'vue'
-// import request from '@/utils/request'
-//
-// export const useUserStore = defineStore('user', () => {
-//   const token = ref<string>(localStorage.getItem('token') || '')
-//   const nickname = ref('')
-//   const permissions = ref<string[]>([])
-//
-//   // 登录：调用真实接口
-//   async function login(username: string, password: string) {
-//     const res = await request.post('/v1/auth/login', {
-//       username,
-//       password
-//     })
-//
-//     token.value = res.data.accessToken
-//     localStorage.setItem('token', token.value)
-//     return res
-//   }
-//
-//   // 登出
-//   function logout() {
-//     token.value = ''
-//     nickname.value = ''
-//     permissions.value = []
-//     localStorage.removeItem('token')
-//     router.push('/login')
-//   }
-//
-//   return { token, nickname, permissions, login, logout }
-// })
-
-
-//假登录
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 import router from '@/router'
+import { getCurrentUserApi, loginApi, logoutApi } from '@/api/auth'
+
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
+const AUDITOR_ROLES = ['AUDITOR', 'CONTENT_AUDITOR']
+
+function normalizeRoles(roles: string[]) {
+  return roles.map(role => role.toUpperCase())
+}
 
 export const useUserStore = defineStore('user', () => {
-  // 模拟 token，刷新页面不掉
   const token = ref<string>(localStorage.getItem('token') || '')
-  const nickname = ref('测试管理员')
-  const permissions = ref<string[]>(['admin'])
+  const refreshToken = ref<string>(localStorage.getItem('refreshToken') || '')
+  const objectId = ref<string>(localStorage.getItem('objectId') || '')
+  const username = ref<string>(localStorage.getItem('username') || '')
+  const nickname = ref<string>(localStorage.getItem('nickname') || '')
+  const roles = ref<string[]>(normalizeRoles(JSON.parse(localStorage.getItem('roles') || '[]')))
+  const permissions = ref<string[]>(JSON.parse(localStorage.getItem('permissions') || '[]'))
 
-  // 假登录 —— 后端没好，前端完全靠它测试！
-  async function login(username: string, password: string) {
-    // 模拟接口延迟
-    await new Promise(resolve => setTimeout(resolve, 500))
+  const isAdmin = computed(() => roles.value.some(role => ADMIN_ROLES.includes(role)))
+  const isAuditor = computed(() => roles.value.some(role => AUDITOR_ROLES.includes(role)))
+  const defaultRoute = computed(() => {
+    if (isAuditor.value && !isAdmin.value) return '/audit'
+    return '/dashboard'
+  })
 
-    // 模拟登录成功
-    token.value = 'test-token-' + Date.now()
+  function persistProfile() {
     localStorage.setItem('token', token.value)
-
-    return Promise.resolve({
-      code: 200,
-      message: '登录成功',
-      data: { accessToken: token.value }
-    })
+    localStorage.setItem('refreshToken', refreshToken.value)
+    localStorage.setItem('objectId', objectId.value)
+    localStorage.setItem('username', username.value)
+    localStorage.setItem('nickname', nickname.value)
+    localStorage.setItem('roles', JSON.stringify(roles.value))
+    localStorage.setItem('permissions', JSON.stringify(permissions.value))
   }
 
-  // 登出
-  function logout() {
+  function clearProfile() {
     token.value = ''
+    refreshToken.value = ''
+    objectId.value = ''
+    username.value = ''
     nickname.value = ''
+    roles.value = []
     permissions.value = []
     localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
+    localStorage.removeItem('objectId')
+    localStorage.removeItem('username')
+    localStorage.removeItem('nickname')
+    localStorage.removeItem('roles')
+    localStorage.removeItem('permissions')
+  }
+
+  async function fetchCurrentUser() {
+    const res = await getCurrentUserApi()
+    objectId.value = res.data.objectId
+    username.value = res.data.username
+    nickname.value = res.data.nickname || res.data.username
+    roles.value = normalizeRoles(res.data.roles || [])
+    permissions.value = res.data.permissions || []
+    persistProfile()
+    return res.data
+  }
+
+  async function login(loginName: string, password: string) {
+    const res = await loginApi({ username: loginName, password })
+    token.value = res.data.accessToken
+    refreshToken.value = res.data.refreshToken
+    persistProfile()
+    await fetchCurrentUser()
+    return res
+  }
+
+  async function logout() {
+    if (token.value) {
+      try {
+        await logoutApi()
+      } catch (error) {
+        console.warn('logout request failed', error)
+      }
+    }
+    clearProfile()
     router.push('/login')
   }
 
-  return { token, nickname, permissions, login, logout }
+  function hasAnyRole(allowedRoles?: string[]) {
+    if (!allowedRoles || allowedRoles.length === 0) return true
+    const normalizedAllowedRoles = normalizeRoles(allowedRoles)
+    return roles.value.some(role => normalizedAllowedRoles.includes(role))
+  }
+
+  return {
+    token,
+    refreshToken,
+    objectId,
+    username,
+    nickname,
+    roles,
+    permissions,
+    isAdmin,
+    isAuditor,
+    defaultRoute,
+    login,
+    logout,
+    fetchCurrentUser,
+    hasAnyRole
+  }
 })

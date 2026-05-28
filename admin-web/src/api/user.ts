@@ -17,6 +17,7 @@ export interface UserListParams {
   pageSize: number
   keyword?: string
   status?: string
+  role?: string
 }
 
 export interface UserListResult {
@@ -32,6 +33,8 @@ export interface SaveUserRequest {
   nickname: string
   email: string
   phone: string
+  role?: string
+  roles?: string[]
 }
 
 export interface ApiResult<T> {
@@ -77,4 +80,20 @@ export const updateUserStatus = (objectId: string, status: string) => {
     method: 'put',
     data: { status }
   }) as unknown as Promise<ApiResult<{ objectId: string; status: string }>>
+}
+
+export const updateUserRole = (objectId: string, role: string) => {
+  return request({
+    url: `/v1/users/${objectId}/role`,
+    method: 'put',
+    data: { role }
+  }) as unknown as Promise<ApiResult<{ objectId: string; roles: string[] }>>
+}
+
+export const resetUserPassword = (objectId: string, password: string) => {
+  return request({
+    url: `/v1/users/${objectId}/password`,
+    method: 'put',
+    data: { password }
+  }) as unknown as Promise<ApiResult<null>>
 }

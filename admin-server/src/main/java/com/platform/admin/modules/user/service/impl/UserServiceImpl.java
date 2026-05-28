@@ -41,7 +41,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setObjectId(UUID.randomUUID().toString());
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         user.setStatus("ENABLED");
-        user.setUserType("ADMIN");
+        if (user.getUserType() == null || user.getUserType().isBlank()) {
+            user.setUserType("USER");
+        }
         user.setIsDeleted(0);
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());

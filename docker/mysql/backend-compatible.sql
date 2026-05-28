@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS `user` (
     INDEX `idx_user_is_deleted` (`is_deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `role` (
+    `object_id` VARCHAR(64) PRIMARY KEY,
+    `role_name` VARCHAR(100) NOT NULL,
+    `role_code` VARCHAR(50) NOT NULL UNIQUE,
+    `description` VARCHAR(500) DEFAULT '',
+    `permissions` TEXT,
+    `is_system` TINYINT DEFAULT 0,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_role_code` (`role_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `audit_queue` (
     `object_id` VARCHAR(64) PRIMARY KEY,
     `content_type` VARCHAR(50) DEFAULT '',
@@ -35,6 +47,17 @@ CREATE TABLE IF NOT EXISTS `audit_queue` (
     INDEX `idx_audit_status` (`status`),
     INDEX `idx_audit_submit_time` (`submit_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `role` (`object_id`, `role_name`, `role_code`, `description`, `permissions`, `is_system`)
+VALUES
+('role-admin', 'Super Admin', 'ADMIN', 'Full system management permissions', 'dashboard:view,user:read,user:write,role:read,role:write,audit:read,audit:write,data:read,data:write,backup:read,backup:write,log:read,settings:read,settings:write', 1),
+('role-auditor', 'Content Auditor', 'AUDITOR', 'Content review permissions', 'audit:read,audit:write', 1),
+('role-user', 'Normal User', 'USER', 'Default ordinary user role', 'profile:read', 1)
+ON DUPLICATE KEY UPDATE
+    `role_name` = VALUES(`role_name`),
+    `description` = VALUES(`description`),
+    `permissions` = VALUES(`permissions`),
+    `is_system` = VALUES(`is_system`);
 
 INSERT INTO `user` (`object_id`, `username`, `password_hash`, `nickname`, `email`, `phone`, `user_type`, `status`, `is_deleted`)
 VALUES
