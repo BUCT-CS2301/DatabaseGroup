@@ -15,6 +15,7 @@ public class Role {
     private String roleName;
     private String roleCode;
     private String description;
+    private String permissions;
     private Integer isSystem;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

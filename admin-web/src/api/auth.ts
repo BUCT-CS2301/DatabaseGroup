@@ -1,7 +1,5 @@
-﻿// 接口方法待实现
 import request from '@/utils/request'
 
-// 直接在这里定义接口类型
 export interface LoginRequest {
   username: string
   password: string
@@ -13,6 +11,15 @@ export interface LoginResponse {
   expiresIn: number
 }
 
+export interface CurrentUser {
+  objectId: string
+  username: string
+  nickname: string
+  avatar?: string
+  roles: string[]
+  permissions: string[]
+}
+
 export interface ApiResponse<T = any> {
   code: number
   message: string
@@ -20,9 +27,23 @@ export interface ApiResponse<T = any> {
 }
 
 export const loginApi = (data: LoginRequest) => {
-  return request<ApiResponse<LoginResponse>>({
-    url: '/auth/login',
+  return request({
+    url: '/v1/auth/login',
     method: 'post',
     data
-  })
+  }) as unknown as Promise<ApiResponse<LoginResponse>>
+}
+
+export const getCurrentUserApi = () => {
+  return request({
+    url: '/v1/auth/current-user',
+    method: 'get'
+  }) as unknown as Promise<ApiResponse<CurrentUser>>
+}
+
+export const logoutApi = () => {
+  return request({
+    url: '/v1/auth/logout',
+    method: 'post'
+  }) as unknown as Promise<ApiResponse<null>>
 }
