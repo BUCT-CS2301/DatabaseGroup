@@ -62,7 +62,7 @@ export interface ApiResult<T> {
 
 export const getRoleList = (params: RoleListParams) => {
   return request({
-    url: '/v1/roles',
+    url: '/api/v1/roles',
     method: 'get',
     params
   }) as unknown as Promise<ApiResult<RoleListResult>>
@@ -70,21 +70,21 @@ export const getRoleList = (params: RoleListParams) => {
 
 export const getAllRoles = () => {
   return request({
-    url: '/v1/roles/all',
+    url: '/api/v1/roles/all',
     method: 'get'
   }) as unknown as Promise<ApiResult<RoleOption[]>>
 }
 
 export const getAllPermissions = () => {
   return request({
-    url: '/v1/roles/permissions',
+    url: '/api/v1/roles/permissions',
     method: 'get'
   }) as unknown as Promise<ApiResult<PermissionOption[]>>
 }
 
 export const createRole = (data: SaveRoleRequest) => {
   return request({
-    url: '/v1/roles',
+    url: '/api/v1/roles',
     method: 'post',
     data
   }) as unknown as Promise<ApiResult<RoleOption>>
