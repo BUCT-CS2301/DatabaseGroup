@@ -15,10 +15,7 @@ const router = createRouter({
     },
     {
       path: '/',
-      redirect: () => {
-        const userStore = useUserStore()
-        return userStore.token ? userStore.defaultRoute : '/login'
-      },
+      redirect: '/dashboard',
       component: () => import('@/components/LayoutView.vue'),
       children: [
         {

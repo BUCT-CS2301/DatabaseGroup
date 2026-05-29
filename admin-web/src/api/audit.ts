@@ -49,7 +49,7 @@ export interface ApiResult<T> {
 
 export const getAuditQueue = (params: AuditListParams) => {
   return request({
-    url: '/v1/audit/queue',
+    url: '/api/v1/audit/queue',
     method: 'get',
     params
   }) as unknown as Promise<ApiResult<AuditListResult>>
@@ -80,7 +80,7 @@ export const rejectAudit = (objectId: string, reason: string, remark?: string) =
 
 export const batchApproveAudit = (objectIds: string[], remark?: string) => {
   return request({
-    url: '/v1/audit/queue/batch-approve',
+    url: '/api/v1/audit/queue/batch-approve',
     method: 'post',
     data: { objectIds, remark }
   }) as unknown as Promise<ApiResult<null>>
@@ -88,7 +88,7 @@ export const batchApproveAudit = (objectIds: string[], remark?: string) => {
 
 export const batchRejectAudit = (objectIds: string[], reason: string) => {
   return request({
-    url: '/v1/audit/queue/batch-reject',
+    url: '/api/v1/audit/queue/batch-reject',
     method: 'post',
     data: { objectIds, reason }
   }) as unknown as Promise<ApiResult<null>>
@@ -96,7 +96,7 @@ export const batchRejectAudit = (objectIds: string[], reason: string) => {
 
 export const getAuditStatistics = () => {
   return request({
-    url: '/v1/audit/statistics',
+    url: '/api/v1/audit/statistics',
     method: 'get'
   }) as unknown as Promise<ApiResult<AuditStatistics>>
 }

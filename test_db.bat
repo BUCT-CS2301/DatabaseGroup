@@ -1,0 +1,1 @@
+docker exec dev-mysql mysql -u root -p643114514 -e "USE admin_platform; SELECT COUNT(*) FROM user;"
