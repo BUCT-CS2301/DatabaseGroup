@@ -306,3 +306,34 @@ CREATE TABLE IF NOT EXISTS `system_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `security_log` (
+    `object_id`   VARCHAR(36) PRIMARY KEY,
+    `user_id`     VARCHAR(36),
+    `event_type`  VARCHAR(50) NOT NULL,
+    `detail`      VARCHAR(500),
+    `ip_address`  VARCHAR(45),
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `user`(`object_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =====================================================
+-- 7. 系统配置模块
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS `sys_config` (
+    `object_id`    VARCHAR(36)  PRIMARY KEY,
+    `config_key`   VARCHAR(100) NOT NULL UNIQUE,
+    `config_value` TEXT         NOT NULL,
+    `description`  VARCHAR(200),
+    `update_time`  DATETIME     ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `sys_announcement` (
+    `object_id`      VARCHAR(36)  PRIMARY KEY,
+    `title`          VARCHAR(200) NOT NULL,
+    `content`        TEXT         NOT NULL,
+    `status`         ENUM('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+    `publish_time`   DATETIME,
+    `expire_time`    DATETIME,
+    `create_user_id` VARCHAR(36),
+    FOREIGN KEY (`create_user_id`) REFERENCES `user`(`object_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
