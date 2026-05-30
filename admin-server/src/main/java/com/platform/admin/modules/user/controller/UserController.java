@@ -8,6 +8,7 @@ import com.platform.admin.common.Result;
 import com.platform.admin.modules.user.entity.User;
 import com.platform.admin.modules.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -20,9 +21,11 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final BCryptPasswordEncoder passwordEncoder;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, BCryptPasswordEncoder passwordEncoder) {
         this.userService = userService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @GetMapping
@@ -41,6 +44,9 @@ public class UserController {
         }
         if (status != null && !status.isEmpty()) {
             wrapper.eq("status", status);
+        }
+        if (role != null && !role.isEmpty()) {
+            wrapper.eq("user_type", role);
         }
         wrapper.orderByDesc("create_time");
         IPage<User> result = userService.page(pageRequest, wrapper);
@@ -94,6 +100,7 @@ public class UserController {
         String nickname = (String) request.get("nickname");
         String email = (String) request.get("email");
         String phone = (String) request.get("phone");
+        String role = getRequestRole(request, "USER");
         
         User existing = userService.getByUsername(username);
         if (existing != null) {
@@ -107,7 +114,7 @@ public class UserController {
         user.setNickname(nickname);
         user.setEmail(email);
         user.setPhone(phone);
-        user.setUserType("ADMIN");
+        user.setUserType(role);
         user.setStatus("ENABLED");
         user.setIsDeleted(0);
         user.setCreateTime(LocalDateTime.now());
@@ -138,10 +145,12 @@ public class UserController {
         String nickname = (String) request.get("nickname");
         String email = (String) request.get("email");
         String phone = (String) request.get("phone");
+        String role = getRequestRole(request, existing.getUserType());
         
         existing.setNickname(nickname);
         existing.setEmail(email);
         existing.setPhone(phone);
+        existing.setUserType(role);
         existing.setUpdateTime(LocalDateTime.now());
         
         userService.updateById(existing);
@@ -157,6 +166,42 @@ public class UserController {
         data.put("updateTime", existing.getUpdateTime());
         
         return Result.success(data);
+    }
+
+    @PutMapping("/{objectId}/role")
+    public Result<Map<String, Object>> updateRole(@PathVariable String objectId, @RequestBody Map<String, Object> request) {
+        User user = userService.getById(objectId);
+        if (user == null || user.getIsDeleted() == 1) {
+            return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
+        }
+
+        String role = getRequestRole(request, user.getUserType());
+        user.setUserType(role);
+        user.setUpdateTime(LocalDateTime.now());
+        userService.updateById(user);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", user.getObjectId());
+        data.put("roles", new String[]{user.getUserType()});
+        return Result.success(data);
+    }
+
+    @PutMapping("/{objectId}/password")
+    public Result<Void> resetPassword(@PathVariable String objectId, @RequestBody Map<String, String> request) {
+        User user = userService.getById(objectId);
+        if (user == null || user.getIsDeleted() == 1) {
+            return Result.error(ErrorCode.NOT_FOUND, "用户不存在");
+        }
+
+        String password = request.get("password");
+        if (password == null || password.length() < 6) {
+            return Result.error(ErrorCode.BAD_REQUEST, "密码至少 6 位");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setUpdateTime(LocalDateTime.now());
+        userService.updateById(user);
+        return Result.success(null);
     }
 
     @DeleteMapping("/{objectId}")
@@ -201,5 +246,18 @@ public class UserController {
         data.put("page", page);
         data.put("pageSize", pageSize);
         return Result.success(data);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String getRequestRole(Map<String, Object> request, String defaultRole) {
+        Object roleValue = request.get("role");
+        if (roleValue instanceof String role && !role.isBlank()) {
+            return role;
+        }
+        Object rolesValue = request.get("roles");
+        if (rolesValue instanceof java.util.List<?> roles && !roles.isEmpty() && roles.get(0) != null) {
+            return String.valueOf(roles.get(0));
+        }
+        return defaultRole;
     }
 }
