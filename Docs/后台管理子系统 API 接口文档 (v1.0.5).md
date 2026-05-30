@@ -1,9 +1,11 @@
-# 后台管理子系统 API 接口文档 (v1.0.5)
+# 后台管理子系统 API 接口文档 (v1.0.7)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.7 | 2026-05-27 | 重写 **§7 日志管理** 为与 **§5.3 博物馆数据**一致的结构化风格（权限、对象模型、分页/详情/导出等）；新增日志下载接口 **GET** `/api/v1/logs/download`，约定导出返回的 `downloadUrl` 指向该 API。 |
+| v1.0.6 | 2026-05-27 | **§7 日志管理**与代码实现对齐：补充分页与参数校验规则、默认值、返回字段模型、错误码；明确日志导出仅支持 `CSV`、`type` 取值为 `OPERATION/SYSTEM/SECURITY`，并补充当前实现返回本地 `file://` 下载地址。 |
 | v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
 | v1.0.4 | 2026-05-13 | **§6.1** 与实现对齐：**POST** 创建文物请求体不再包含 **`imageUrl`/`imagePath`**（由服务端按 **`app.relics`** 与 **`objectId`** 写入）；**`museumId`** 创建时**必填**；**§6.1.6** 上传图片成功响应补充 **`imageUrl`**，并注明落盘后**同步更新库表**；新增 **§6.1.10 CSV 批量创建**（**POST** `/api/v1/data/relics/import-csv`）；**§6.1.1** 补充 **import-csv** 仅 **ADMIN**；**§1.5** 补充业务码 **413**；**§6.1.9** 补充 CSV/413 相关场景。 |
 | v1.0.3 | 2026-05-13 | 在 **§6.1 文物数据** 下新增 **§6.1.6 上传文物图片**：**POST** `/api/v1/data/relics/{objectId}/image`（`multipart/form-data`，字段 **`file`**）；白名单 **JPEG/PNG/GIF/WebP**、单文件 **10 MB** 上限、落盘 **`src/main/resources/relics-images/`**、文件名为 **`{objectId}.<扩展名>`**；**§6.1.1** 补充该接口仅 **ADMIN**；原 **§6.1.6～§6.1.8** 顺延为 **§6.1.7～§6.1.9**。 |
@@ -1099,21 +1101,127 @@ Header 携带 Token。
 
 ## 7. 日志管理
 
-### 7.1 操作日志
+### 7.1 模块概述
 
-**GET** `/api/v1/logs/operation?page=1&pageSize=20&userId=xxx&module=USER&startTime=2026-05-01&endTime=2026-05-06`
+日志管理模块负责系统关键行为留痕与审计追踪，覆盖操作日志、系统日志、安全日志查询，以及日志导出与下载能力，支持故障排查和合规审计。
+
+### 7.2 权限
+
+- 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
+- **GET** `/api/v1/logs/operation`、**GET** `/api/v1/logs/operation/{objectId}`、**GET** `/api/v1/logs/system`、**GET** `/api/v1/logs/security`：需具备日志查询权限（如 `log:read`）。  
+- **POST** `/api/v1/logs/export`、**GET** `/api/v1/logs/download`：需具备日志导出权限（如 `log:export`）。  
+- 权限不足返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。
+
+### 7.3 日志对象模型
+
+#### 7.3.1 操作日志对象 `OperationLogVO`
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| objectId | string | 是 | 日志主键（UUID） |
+| userId | string | 否 | 操作用户 ID |
+| operator | string | 否 | 操作人展示名（昵称优先，其次用户名） |
+| module | string | 是 | 业务模块标识 |
+| action | string | 是 | 操作动作 |
+| result | string | 否 | 操作结果（如 `SUCCESS` / `FAILED` / `UNKNOWN`） |
+| operationTime | string | 是 | ISO 8601 时间 |
+
+#### 7.3.2 操作日志详情对象 `OperationLogDetailVO`
+
+在 `OperationLogVO` 基础上补充：
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| ipAddress | string | 否 | 操作来源 IP |
+| requestParams | object | 否 | 请求参数（JSON 对象） |
+| responseResult | object | 否 | 响应摘要（JSON 对象） |
+
+#### 7.3.3 系统日志对象 `SystemLogVO`
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| objectId | string | 是 | 日志主键（UUID） |
+| createTime | string | 是 | ISO 8601 时间 |
+| level | string | 是 | 当前支持 `INFO` / `WARN` / `ERROR` |
+| serviceName | string | 是 | 服务名，缺省回退 `admin-server` |
+| messageSummary | string | 否 | 日志摘要（最长约 120 字符） |
+
+#### 7.3.4 安全日志对象 `SecurityLogVO`
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| objectId | string | 是 | 日志主键（UUID） |
+| eventType | string | 是 | 安全事件类型（如 `LOGIN`） |
+| eventResult | string | 否 | 事件结果（如 `SUCCESS` / `DENIED` / `FAILED` / `UNKNOWN`） |
+| userIdentity | string | 否 | 用户标识展示名 |
+| ipAddress | string | 否 | 来源 IP |
+| createTime | string | 是 | ISO 8601 时间 |
+
+#### 7.3.5 导出结果对象 `LogExportVO`
+
+| 字段名 | 类型 | 必填 | 约束与说明 |
+| :----- | :--- | :--- | :----------- |
+| downloadUrl | string | 是 | 下载 API 地址（形如 `/api/v1/logs/download?fileId=...`） |
+| expireTime | string | 是 | 下载链接过期时间（ISO 8601） |
+
+### 7.4 操作日志查询
+
+#### 7.4.1 分页列表
+
+**GET** `/api/v1/logs/operation`
+
+**Query 参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| page | number | 否 | 默认 **1**，最小 **1** |
+| pageSize | number | 否 | 默认 **20**，最大 **100**；超出返回 **400** |
+| userId | string | 否 | 精确匹配 `operation_log.user_id` |
+| module | string | 否 | 精确匹配 `operation_log.module` |
+| startTime | string(date-time) | 否 | ISO 8601；不传则默认 `endTime - 24h` |
+| endTime | string(date-time) | 否 | ISO 8601；不传则默认当前时间 |
+
+- 当 `startTime > endTime` 时返回 **400**。
+- 返回结果按 `operationTime` 倒序。
+
+**Response (200)** — 分页结构见 **§1.4**，`records[]` 元素为 **`OperationLogVO`**。
+
+#### 7.4.2 详情
 
 **GET** `/api/v1/logs/operation/{objectId}`
 
-### 7.2 系统日志
+- 路径参数 **`objectId`** 为操作日志主键。  
+- 资源不存在：返回 **404**，`code` **404**，`data` 为 **null**。  
+- 成功时 `data` 为 **`OperationLogDetailVO`**。
 
-**GET** `/api/v1/logs/system?page=1&pageSize=20&level=ERROR`
+### 7.5 系统日志分页查询
 
-### 7.3 安全日志
+**GET** `/api/v1/logs/system`
 
-**GET** `/api/v1/logs/security?page=1&pageSize=20`
+**Query 参数**
 
-### 7.4 日志导出
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| page | number | 否 | 默认 **1**，最小 **1** |
+| pageSize | number | 否 | 默认 **20**，最大 **100**；超出返回 **400** |
+| level | string | 否 | 默认 **ERROR**；当前支持 `INFO` / `WARN` / `ERROR` |
+
+**Response (200)** — 分页结构见 **§1.4**，`records[]` 元素为 **`SystemLogVO`**。
+
+### 7.6 安全日志分页查询
+
+**GET** `/api/v1/logs/security`
+
+**Query 参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| page | number | 否 | 默认 **1**，最小 **1** |
+| pageSize | number | 否 | 默认 **20**，最大 **100**；超出返回 **400** |
+
+**Response (200)** — 分页结构见 **§1.4**，`records[]` 元素为 **`SecurityLogVO`**。
+
+### 7.7 日志导出
 
 **POST** `/api/v1/logs/export`
 
@@ -1131,17 +1239,52 @@ Header 携带 Token。
 }
 ```
 
-**Response**
+**字段约束**
+
+- `type`：必填，支持 `OPERATION` / `SYSTEM` / `SECURITY`。  
+- `format`：必填，仅支持 `CSV`。  
+- `filters.startTime` / `filters.endTime`：可选，需为 ISO 8601 时间；若同时存在且 `startTime > endTime`，返回 **400**。  
+- `filters.module`：可选；对 `OPERATION` 与 `SYSTEM` 导出生效。  
+
+**Response (200)**：`data` 为 **`LogExportVO`**。
 
 ```json
 {
   "code": 200,
+  "message": "success",
   "data": {
-    "downloadUrl": "https://oss.xxx.com/exports/log_20260506.csv",
-    "expireTime": "2026-05-07T12:00:00"
+    "downloadUrl": "/api/v1/logs/download?fileId=log_operation_20260527123000_xxxxxxxx",
+    "expireTime": "2026-05-27T13:00:00"
   }
 }
 ```
+
+### 7.8 日志下载
+
+**GET** `/api/v1/logs/download?fileId=log_operation_20260527123000_xxxxxxxx`
+
+**Query 参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- |
+| fileId | string | 是 | 导出任务文件标识；由导出接口返回 |
+
+**行为说明**
+
+- 成功：返回文件流（`text/csv`）并触发浏览器下载。  
+- `fileId` 不存在或文件已过期：返回 **404**。  
+- 无权限访问：返回 **403**。  
+
+### 7.9 错误与行为小结
+
+| 场景 | HTTP | code |
+| :--- | :--- | :--- |
+| 未认证 / Token 无效 | 401 | 401 |
+| 权限不足（无 `log:read` 或 `log:export`） | 403 | 403 |
+| 分页参数、时间范围、`type`/`format`/`level` 非法 | 400 | 400 |
+| 操作日志详情不存在 | 404 | 404 |
+| 下载文件不存在或已过期 | 404 | 404 |
+| 导出异常 | 500 / 200 | 5001 |
 
 ---
 

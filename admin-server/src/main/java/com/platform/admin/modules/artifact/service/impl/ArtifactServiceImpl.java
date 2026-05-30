@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.admin.common.BusinessException;
 import com.platform.admin.common.ErrorCode;
 import com.platform.admin.common.PageResult;
+import com.platform.admin.common.log.OperationLogWriter;
+import com.platform.admin.common.util.ClientIpUtils;
 import com.platform.admin.config.RelicAutoImageProperties;
 import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
@@ -20,6 +22,7 @@ import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
+import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.SecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,8 +31,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Iterator;
@@ -42,7 +48,9 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,8 +63,10 @@ public class ArtifactServiceImpl implements ArtifactService {
     private static final long DEFAULT_PAGE_SIZE = 10L;
     private static final long MAX_PAGE_SIZE = 100L;
     private static final long MAX_RELIC_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final String MODULE_RELIC = "RELIC";
 
     private final SecurityUtil securityUtil;
+    private final OperationLogWriter operationLogWriter;
     private final ArtifactMapper artifactMapper;
     private final RelicImageStorage relicImageStorage;
     private final RelicAutoImageProperties relicAutoImageProperties;
@@ -65,12 +75,14 @@ public class ArtifactServiceImpl implements ArtifactService {
 
     public ArtifactServiceImpl(
             SecurityUtil securityUtil,
+            OperationLogWriter operationLogWriter,
             ArtifactMapper artifactMapper,
             RelicImageStorage relicImageStorage,
             RelicAutoImageProperties relicAutoImageProperties,
             RelicCsvImportParser relicCsvImportParser,
             PlatformTransactionManager platformTransactionManager) {
         this.securityUtil = securityUtil;
+        this.operationLogWriter = operationLogWriter;
         this.artifactMapper = artifactMapper;
         this.relicImageStorage = relicImageStorage;
         this.relicAutoImageProperties = relicAutoImageProperties;
@@ -165,6 +177,10 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .build();
         artifactMapper.insert(entity);
         log.info("event=data_relic_create_success objectId={}", objectId);
+        writeOperationLog("CREATE", objectId, Map.of(
+                "title", request.getTitle(),
+                "museumId", request.getMuseumId()
+        ));
         return RelicAssembler.toVO(entity);
     }
 
@@ -177,6 +193,7 @@ public class ArtifactServiceImpl implements ArtifactService {
         entity.setUpdateTime(LocalDateTime.now());
         artifactMapper.updateById(entity);
         log.info("event=data_relic_update_success objectId={}", objectId);
+        writeOperationLog("UPDATE", objectId, request);
         return RelicAssembler.toVO(entity);
     }
 
@@ -238,6 +255,7 @@ public class ArtifactServiceImpl implements ArtifactService {
                 objectId,
                 extWithDot.substring(1),
                 data.length);
+        writeOperationLog("UPDATE", objectId, Map.of("action", "UPLOAD_IMAGE", "imagePath", imagePath));
         return RelicImageUploadVO.builder()
                 .objectId(objectId)
                 .imagePath(imagePath)
@@ -359,7 +377,34 @@ public class ArtifactServiceImpl implements ArtifactService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
         }
         log.info("event=data_relic_delete_success objectId={}", objectId);
+        writeOperationLog("DELETE", objectId, Map.of("objectId", objectId));
         return new DeleteRelicVO(objectId, 1);
+    }
+
+    private void writeOperationLog(String action, String targetId, Object requestParams) {
+        try {
+            AuthUser operator = securityUtil.getCurrentUser();
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("result", "SUCCESS");
+            detail.put("requestParams", requestParams);
+            operationLogWriter.writeAsync(
+                    operator.objectId(),
+                    resolveClientIp(),
+                    MODULE_RELIC,
+                    action,
+                    "RELIC",
+                    targetId,
+                    detail
+            );
+        } catch (Exception ex) {
+            log.warn("operation_log write skipped for relic action={} targetId={}", action, targetId, ex);
+        }
+    }
+
+    private String resolveClientIp() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attributes == null ? null : attributes.getRequest();
+        return ClientIpUtils.resolve(request);
     }
 
     private ArtifactEntity getNotDeletedById(String objectId) {

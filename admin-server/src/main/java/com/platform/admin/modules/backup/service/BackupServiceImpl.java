@@ -21,7 +21,9 @@ import com.platform.admin.modules.backup.support.BackupCronUtil;
 import com.platform.admin.modules.backup.support.BackupRecordReconciler;
 import com.platform.admin.modules.backup.support.BackupServiceSupport;
 import com.platform.admin.modules.backup.support.BackupStorage;
-import com.platform.admin.modules.backup.support.OperationLogWriter;
+import com.platform.admin.common.log.SecurityLogEventType;
+import com.platform.admin.common.log.SecurityLogWriter;
+import com.platform.admin.common.util.ClientIpUtils;
 import com.platform.admin.modules.backup.support.RestoreTaskStore;
 import com.platform.admin.modules.backup.vo.BackupRecordDetailVO;
 import com.platform.admin.modules.backup.vo.BackupRecordVO;
@@ -40,6 +42,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -56,7 +62,6 @@ public class BackupServiceImpl implements BackupService {
     private static final long DEFAULT_PAGE = 1L;
     private static final long DEFAULT_PAGE_SIZE = 10L;
     private static final long MAX_PAGE_SIZE = 100L;
-    private static final String MODULE = "BACKUP";
 
     private final SecurityUtil securityUtil;
     private final BackupRecordMapper backupRecordMapper;
@@ -64,7 +69,7 @@ public class BackupServiceImpl implements BackupService {
     private final UserLookupMapper userLookupMapper;
     private final BackupStorage backupStorage;
     private final RestoreTaskStore restoreTaskStore;
-    private final OperationLogWriter operationLogWriter;
+    private final SecurityLogWriter securityLogWriter;
     private final BackupAsyncExecutor backupAsyncExecutor;
     private final BackupServiceSupport backupServiceSupport;
     private final BackupRecordReconciler backupRecordReconciler;
@@ -76,7 +81,7 @@ public class BackupServiceImpl implements BackupService {
             UserLookupMapper userLookupMapper,
             BackupStorage backupStorage,
             RestoreTaskStore restoreTaskStore,
-            OperationLogWriter operationLogWriter,
+            SecurityLogWriter securityLogWriter,
             BackupAsyncExecutor backupAsyncExecutor,
             BackupServiceSupport backupServiceSupport,
             BackupRecordReconciler backupRecordReconciler
@@ -87,7 +92,7 @@ public class BackupServiceImpl implements BackupService {
         this.userLookupMapper = userLookupMapper;
         this.backupStorage = backupStorage;
         this.restoreTaskStore = restoreTaskStore;
-        this.operationLogWriter = operationLogWriter;
+        this.securityLogWriter = securityLogWriter;
         this.backupAsyncExecutor = backupAsyncExecutor;
         this.backupServiceSupport = backupServiceSupport;
         this.backupRecordReconciler = backupRecordReconciler;
@@ -102,12 +107,14 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public List<BackupScheduleVO> listSchedules() {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         LambdaQueryWrapper<BackupScheduleEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.orderByDesc(BackupScheduleEntity::getCreateTime);
-        return backupScheduleMapper.selectList(wrapper).stream()
+        List<BackupScheduleVO> schedules = backupScheduleMapper.selectList(wrapper).stream()
                 .map(BackupAssembler::toScheduleVO)
                 .toList();
+        auditBackupQuery(operator, "/api/v1/backup/schedules", "GET", Map.of());
+        return schedules;
     }
 
     @Override
@@ -130,14 +137,10 @@ public class BackupServiceImpl implements BackupService {
                 .build();
         backupScheduleMapper.insert(entity);
 
-        operationLogWriter.write(
-                operator.objectId(),
-                MODULE,
-                "SCHEDULE_CREATE",
-                "BACKUP_SCHEDULE",
-                objectId,
-                Map.of("cronExpression", request.getCronExpression(), "backupType", request.getBackupType().name())
-        );
+        auditBackupWrite(operator, SecurityLogEventType.BACKUP_SCHEDULE_CREATE, "POST",
+                "/api/v1/backup/schedules",
+                Map.of("objectId", objectId, "cronExpression", request.getCronExpression(),
+                        "backupType", request.getBackupType().name()));
         return BackupAssembler.toScheduleVO(entity);
     }
 
@@ -166,14 +169,9 @@ public class BackupServiceImpl implements BackupService {
         entity.setUpdateTime(BackupCronUtil.now());
         backupScheduleMapper.updateById(entity);
 
-        operationLogWriter.write(
-                operator.objectId(),
-                MODULE,
-                "SCHEDULE_UPDATE",
-                "BACKUP_SCHEDULE",
-                objectId,
-                Map.of("enabled", entity.getEnabled())
-        );
+        auditBackupWrite(operator, SecurityLogEventType.BACKUP_SCHEDULE_UPDATE, "PUT",
+                "/api/v1/backup/schedules/" + objectId,
+                Map.of("objectId", objectId, "enabled", entity.getEnabled()));
         return BackupAssembler.toScheduleVO(entity);
     }
 
@@ -184,14 +182,9 @@ public class BackupServiceImpl implements BackupService {
         requireSchedule(objectId);
         backupScheduleMapper.deleteById(objectId);
 
-        operationLogWriter.write(
-                operator.objectId(),
-                MODULE,
-                "SCHEDULE_DELETE",
-                "BACKUP_SCHEDULE",
-                objectId,
-                Map.of()
-        );
+        auditBackupWrite(operator, SecurityLogEventType.BACKUP_SCHEDULE_DELETE, "DELETE",
+                "/api/v1/backup/schedules/" + objectId,
+                Map.of("objectId", objectId));
         return new DeleteScheduleVO(objectId, true);
     }
 
@@ -202,7 +195,7 @@ public class BackupServiceImpl implements BackupService {
             BackupStatus status,
             BackupType backupType
     ) {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         long safePage = page <= 0 ? DEFAULT_PAGE : page;
         long safePageSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
 
@@ -222,14 +215,17 @@ public class BackupServiceImpl implements BackupService {
         List<BackupRecordVO> records = result.getRecords().stream()
                 .map(entity -> BackupAssembler.toRecordVO(entity, resolveOperatorName(entity.getOperatorId())))
                 .toList();
+        auditBackupQuery(operator, "/api/v1/backup/records", "GET",
+                Map.of("page", safePage, "pageSize", safePageSize));
         return new PageResult<>(records, result.getTotal(), safePage, safePageSize);
     }
 
     @Override
     public BackupRecordDetailVO getRecordDetail(String objectId, String baseUrl) {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         BackupRecordEntity entity = requireRecord(objectId);
         String downloadUrl = baseUrl + "/api/v1/backup/records/" + objectId + "/download";
+        auditBackupQuery(operator, "/api/v1/backup/records/" + objectId, "GET", Map.of("objectId", objectId));
         return BackupAssembler.toRecordDetailVO(
                 entity,
                 resolveOperatorName(entity.getOperatorId()),
@@ -239,7 +235,7 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public Path resolveDownloadFile(String objectId) {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         BackupRecordEntity entity = requireRecord(objectId);
         if (entity.getStatus() != BackupStatus.SUCCESS) {
             throw new BusinessException(ErrorCode.BACKUP_FILE_NOT_FOUND, "备份文件不存在");
@@ -248,6 +244,8 @@ public class BackupServiceImpl implements BackupService {
         if (file == null || !Files.exists(file)) {
             throw new BusinessException(ErrorCode.BACKUP_FILE_NOT_FOUND, "备份文件不存在");
         }
+        auditBackupQuery(operator, "/api/v1/backup/records/" + objectId + "/download", "GET",
+                Map.of("objectId", objectId));
         return file;
     }
 
@@ -270,14 +268,9 @@ public class BackupServiceImpl implements BackupService {
         }
         backupRecordMapper.deleteById(objectId);
 
-        operationLogWriter.write(
-                operator.objectId(),
-                MODULE,
-                "RECORD_DELETE",
-                "BACKUP_RECORD",
-                objectId,
-                Map.of("fileSize", entity.getFileSize())
-        );
+        auditBackupWrite(operator, SecurityLogEventType.BACKUP_RECORD_DELETE, "DELETE",
+                "/api/v1/backup/records/" + objectId,
+                Map.of("objectId", objectId, "fileSize", entity.getFileSize()));
         return new DeleteBackupVO(objectId, true);
     }
 
@@ -298,14 +291,9 @@ public class BackupServiceImpl implements BackupService {
         String restoreTaskId = restoreTaskStore.createTask(objectId);
         restoreTaskStore.markRestoreActive(restoreTaskId);
 
-        operationLogWriter.write(
-                operator.objectId(),
-                MODULE,
-                "RESTORE",
-                "BACKUP_RECORD",
-                objectId,
-                Map.of("restoreTaskId", restoreTaskId)
-        );
+        auditBackupWrite(operator, SecurityLogEventType.BACKUP_RESTORE, "POST",
+                "/api/v1/backup/restore/" + objectId,
+                Map.of("objectId", objectId, "restoreTaskId", restoreTaskId));
 
         backupAsyncExecutor.executeRestoreAsync(restoreTaskId, file);
         log.info("event=backup_restore_trigger recordId={} restoreTaskId={}", objectId, restoreTaskId);
@@ -319,11 +307,13 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public RestoreTaskVO getRestoreTask(String restoreTaskId) {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         Map<String, Object> task = restoreTaskStore.getTask(restoreTaskId);
         if (task == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
         }
+        auditBackupQuery(operator, "/api/v1/backup/restore/" + restoreTaskId, "GET",
+                Map.of("restoreTaskId", restoreTaskId));
         return RestoreTaskVO.builder()
                 .restoreTaskId(String.valueOf(task.get("restoreTaskId")))
                 .backupRecordId(String.valueOf(task.get("backupRecordId")))
@@ -333,10 +323,11 @@ public class BackupServiceImpl implements BackupService {
 
     @Override
     public StorageInfoVO getStorageInfo() {
-        requireAdmin();
+        AuthUser operator = requireAdmin();
         long backupCount = backupRecordMapper.selectCount(
                 new LambdaQueryWrapper<BackupRecordEntity>().eq(BackupRecordEntity::getStatus, BackupStatus.SUCCESS)
         );
+        auditBackupQuery(operator, "/api/v1/backup/storage-info", "GET", Map.of("backupCount", backupCount));
         return backupServiceSupport.buildStorageInfo(backupCount);
     }
 
@@ -389,14 +380,9 @@ public class BackupServiceImpl implements BackupService {
         backupRecordMapper.insert(record);
 
         if (writeManualLog && persistedOperatorId != null) {
-            operationLogWriter.write(
-                    persistedOperatorId,
-                    MODULE,
-                    "MANUAL_BACKUP",
-                    "BACKUP_RECORD",
-                    objectId,
-                    Map.of("backupType", backupType.name())
-            );
+            auditBackupWriteByUserId(persistedOperatorId, SecurityLogEventType.BACKUP_MANUAL, "POST",
+                    "/api/v1/backup/manual",
+                    Map.of("objectId", objectId, "backupType", backupType.name()));
         }
 
         scheduleBackupAfterCommit(objectId, targetFile);
@@ -444,6 +430,32 @@ public class BackupServiceImpl implements BackupService {
     private AuthUser requireAdmin() {
         securityUtil.requireAdminWritePermission();
         return securityUtil.getCurrentUser();
+    }
+
+    private void auditBackupWrite(AuthUser operator, String eventType, String httpMethod, String path, Map<String, Object> extra) {
+        auditBackupWriteByUserId(operator.objectId(), eventType, httpMethod, path, extra);
+    }
+
+    private void auditBackupWriteByUserId(String userId, String eventType, String httpMethod, String path, Map<String, Object> extra) {
+        securityLogWriter.writeSecurityAccess(userId, eventType, resolveClientIp(), path, httpMethod, "SUCCESS", extra);
+    }
+
+    private void auditBackupQuery(AuthUser operator, String path, String httpMethod, Map<String, Object> extra) {
+        securityLogWriter.writeSecurityAccess(
+                operator.objectId(),
+                SecurityLogEventType.BACKUP_QUERY,
+                resolveClientIp(),
+                path,
+                httpMethod,
+                "SUCCESS",
+                extra
+        );
+    }
+
+    private String resolveClientIp() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attributes == null ? null : attributes.getRequest();
+        return ClientIpUtils.resolve(request);
     }
 
     private void ensureNoActiveBackupOrRestore() {
