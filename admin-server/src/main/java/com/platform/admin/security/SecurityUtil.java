@@ -17,7 +17,7 @@ public class SecurityUtil {
     public AuthUser getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof AuthUser authUser)) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "未认证或认证已过期");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "未认证或Token失效");
         }
         return authUser;
     }

@@ -1,4 +1,6 @@
 package com.platform.admin.security;
 
-public record AuthUser(String objectId, UserType userType) {
+import java.util.Set;
+
+public record AuthUser(String objectId, UserType userType, Set<String> permissions) {
 }

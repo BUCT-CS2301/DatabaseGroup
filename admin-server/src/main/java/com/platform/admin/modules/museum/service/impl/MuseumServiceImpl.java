@@ -13,6 +13,9 @@ import com.platform.admin.modules.museum.mapper.MuseumMapper;
 import com.platform.admin.modules.museum.service.MuseumService;
 import com.platform.admin.modules.museum.vo.DeleteMuseumVO;
 import com.platform.admin.modules.museum.vo.MuseumVO;
+import com.platform.admin.common.log.OperationLogWriter;
+import com.platform.admin.common.util.ClientIpUtils;
+import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.SecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,8 +23,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -33,10 +42,14 @@ public class MuseumServiceImpl implements MuseumService {
 
     private final SecurityUtil securityUtil;
     private final MuseumMapper museumMapper;
+    private final OperationLogWriter operationLogWriter;
 
-    public MuseumServiceImpl(SecurityUtil securityUtil, MuseumMapper museumMapper) {
+    public MuseumServiceImpl(SecurityUtil securityUtil,
+                             MuseumMapper museumMapper,
+                             OperationLogWriter operationLogWriter) {
         this.securityUtil = securityUtil;
         this.museumMapper = museumMapper;
+        this.operationLogWriter = operationLogWriter;
     }
 
     @Override
@@ -85,6 +98,7 @@ public class MuseumServiceImpl implements MuseumService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "数据约束冲突，请检查字段内容");
         }
         log.info("event=data_museum_create_success objectId={}", objectId);
+        writeOperationLog("CREATE", objectId, request);
         return MuseumAssembler.toVO(entity);
     }
 
@@ -100,6 +114,7 @@ public class MuseumServiceImpl implements MuseumService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "数据约束冲突，请检查字段内容");
         }
         log.info("event=data_museum_update_success objectId={}", objectId);
+        writeOperationLog("UPDATE", objectId, request);
         return MuseumAssembler.toVO(entity);
     }
 
@@ -118,6 +133,7 @@ public class MuseumServiceImpl implements MuseumService {
             throw new BusinessException(ErrorCode.CONFLICT, "无法删除博物馆：仍存在强制关联数据");
         }
         log.info("event=data_museum_delete_success objectId={}", objectId);
+        writeOperationLog("DELETE", objectId, Map.of("objectId", objectId));
         return new DeleteMuseumVO(objectId, true);
     }
 
@@ -145,5 +161,27 @@ public class MuseumServiceImpl implements MuseumService {
         if (request.getWebsite() != null) {
             entity.setWebsite(request.getWebsite());
         }
+    }
+
+    private void writeOperationLog(String action, String targetId, Object requestParams) {
+        AuthUser operator = securityUtil.getCurrentUser();
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("result", "SUCCESS");
+        detail.put("requestParams", requestParams);
+        operationLogWriter.writeAsync(
+                operator.objectId(),
+                resolveClientIp(),
+                "MUSEUM",
+                action,
+                "MUSEUM",
+                targetId,
+                detail
+        );
+    }
+
+    private String resolveClientIp() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attributes == null ? null : attributes.getRequest();
+        return ClientIpUtils.resolve(request);
     }
 }

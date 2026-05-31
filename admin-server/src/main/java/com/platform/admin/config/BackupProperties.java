@@ -1,9 +1,6 @@
 package com.platform.admin.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
-
-@Component // 2. 新增注解，写在类上、和下面注解并排
 
 @ConfigurationProperties(prefix = "app.backup")
 public class BackupProperties {
