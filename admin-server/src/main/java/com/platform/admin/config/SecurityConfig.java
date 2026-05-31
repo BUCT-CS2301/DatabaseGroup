@@ -45,12 +45,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh-token").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/auth/mock-token").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/logs/export").hasAuthority(LogPermissions.EXPORT)
                 .requestMatchers(HttpMethod.GET, "/api/v1/logs/download").hasAuthority(LogPermissions.EXPORT)
                 .requestMatchers(HttpMethod.GET, "/api/v1/logs/operation", "/api/v1/logs/operation/**",
                         "/api/v1/logs/system", "/api/v1/logs/security").hasAuthority(LogPermissions.READ)
                 .requestMatchers("/api/v1/logs/**").authenticated()
                 .requestMatchers("/api/v1/data/relics/**", "/api/v1/data/museums/**").authenticated()
+                .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )
             .csrf(csrf -> csrf.disable())
