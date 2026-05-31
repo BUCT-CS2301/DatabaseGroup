@@ -2,16 +2,24 @@ package com.platform.admin.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 
 @Component
 public class JwtProvider {
-    private final SecretKey key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private final long expiration = 7200000L; // 2小时
+    private final SecretKey key;
+    private final long expiration;
+
+    public JwtProvider(@Value("${app.jwt.secret}") String secret,
+                       @Value("${app.jwt.expiration-ms:7200000}") long expiration) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expiration = expiration;
+    }
 
     public String generateToken(String userId) {
         return generateToken(userId, "MOBILE");

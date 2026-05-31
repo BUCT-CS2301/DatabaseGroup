@@ -75,7 +75,7 @@ public class AuthController {
         Map<String, Object> data = new HashMap<>();
         data.put("accessToken", accessToken);
         data.put("refreshToken", refreshToken);
-        data.put("expiresIn", 7200);
+        data.put("expiresIn", jwtProvider.getAccessTokenTtlSeconds());
         
         return Result.success(data);
     }
@@ -100,28 +100,23 @@ public class AuthController {
     }
 
     @GetMapping("/current-user")
-    public Result<Map<String, Object>> getCurrentUser(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            String accessToken = token.substring(7);
-            String userId = jwtProvider.getUserIdFromToken(accessToken);
-            
-            User user = userService.getById(userId);
-            if (user != null) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("objectId", user.getObjectId());
-                data.put("username", user.getUsername());
-                data.put("nickname", user.getNickname());
-                data.put("avatar", user.getAvatar());
-                data.put("roles", new String[]{user.getUserType()});
-                List<String> permissions = new ArrayList<>(List.of(
-                        "user:read", "user:write", "role:read", "role:write",
-                        "audit:read", "audit:write", "config:read", "config:write"
-                ));
-                permissions.addAll(logPermissionResolver.resolve(user));
-                data.put("permissions", permissions.toArray(new String[0]));
-                return Result.success(data);
-            }
+    public Result<Map<String, Object>> getCurrentUser() {
+        String userId = securityUtil.getCurrentUser().objectId();
+        User user = userService.getById(userId);
+        if (user != null && !"DISABLED".equals(user.getStatus())) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("objectId", user.getObjectId());
+            data.put("username", user.getUsername());
+            data.put("nickname", user.getNickname());
+            data.put("avatar", user.getAvatar());
+            data.put("roles", new String[]{user.getUserType()});
+            List<String> permissions = new ArrayList<>(List.of(
+                    "user:read", "user:write", "role:read", "role:write",
+                    "audit:read", "audit:write", "config:read", "config:write"
+            ));
+            permissions.addAll(logPermissionResolver.resolve(user));
+            data.put("permissions", permissions.toArray(new String[0]));
+            return Result.success(data);
         }
         return Result.error(ErrorCode.UNAUTHORIZED, "未认证");
     }
@@ -129,15 +124,22 @@ public class AuthController {
     @PostMapping("/refresh-token")
     public Result<Map<String, Object>> refreshToken(@RequestBody Map<String, String> request) {
         String refreshToken = request.get("refreshToken");
+
+        if (refreshToken == null || refreshToken.isBlank() || !jwtProvider.validateToken(refreshToken)) {
+            return Result.error(ErrorCode.UNAUTHORIZED, "无效的刷新令牌");
+        }
         
         String userId = jwtProvider.getUserIdFromToken(refreshToken);
-        if (userId == null) {
+        if (userId == null || userId.isBlank()) {
             return Result.error(ErrorCode.UNAUTHORIZED, "无效的刷新令牌");
         }
         
         User user = userService.getById(userId);
         if (user == null) {
             return Result.error(ErrorCode.UNAUTHORIZED, "用户不存在");
+        }
+        if ("DISABLED".equals(user.getStatus())) {
+            return Result.error(ErrorCode.UNAUTHORIZED, "账号已被禁用");
         }
         
         String newAccessToken = jwtProvider.generateToken(user.getObjectId(), user.getUserType());
@@ -146,7 +148,7 @@ public class AuthController {
         Map<String, Object> data = new HashMap<>();
         data.put("accessToken", newAccessToken);
         data.put("refreshToken", newRefreshToken);
-        data.put("expiresIn", 7200);
+        data.put("expiresIn", jwtProvider.getAccessTokenTtlSeconds());
         
         return Result.success(data);
     }
