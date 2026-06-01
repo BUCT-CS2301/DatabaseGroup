@@ -13,19 +13,15 @@ public final class RelicAssembler {
     private RelicAssembler() {
     }
 
-    public static RelicVO toVO(ArtifactEntity entity) {
-        return toVO(entity, null, null);
+    public static RelicVO toVO(ArtifactEntity entity, String primaryImageUrl) {
+        return toVO(entity, null, primaryImageUrl);
     }
 
-  /**
-   * 转为对外 VO，可选填充多图与主图（详情接口）。
-   *
-   * @param entity    库表实体
-   * @param imageUrls 多图 URL；为 null 时不设置
-   * @param primaryUrl 覆盖主图 URL；为 null 时使用 entity.imageUrl
-   */
-  public static RelicVO toVO(ArtifactEntity entity, List<String> imageUrls, String primaryUrl) {
-        String imageUrl = primaryUrl != null ? primaryUrl : entity.getImageUrl();
+    /**
+     * @param imageUrls      详情多图；为 null 时不设置
+     * @param primaryImageUrl 列表封面或详情主图
+     */
+    public static RelicVO toVO(ArtifactEntity entity, List<String> imageUrls, String primaryImageUrl) {
         RelicVO.RelicVOBuilder builder = RelicVO.builder()
                 .objectId(entity.getObjectId())
                 .title(entity.getTitle())
@@ -36,8 +32,7 @@ public final class RelicAssembler {
                 .dimensions(entity.getDimensions())
                 .museumId(entity.getMuseumId())
                 .detailUrl(entity.getDetailUrl())
-                .imageUrl(imageUrl)
-                .imagePath(entity.getImagePath())
+                .imageUrl(primaryImageUrl)
                 .creditLine(entity.getCreditLine())
                 .accessionNumber(entity.getAccessionNumber())
                 .crawlDate(entity.getCrawlDate())
@@ -51,15 +46,15 @@ public final class RelicAssembler {
         return builder.build();
     }
 
-  /** 相关推荐等场景：仅填充卡片所需字段与热度。 */
-  public static RelicVO toBrowseCard(ArtifactEntity entity, String imageUrl) {
-    return RelicVO.builder()
-        .objectId(entity.getObjectId())
-        .title(entity.getTitle())
-        .period(entity.getPeriod())
-        .type(entity.getType())
-        .imageUrl(imageUrl)
-        .popularity(RelicPopularitySupport.compute(entity.getCreateTime()))
-        .build();
-  }
+    /** 相关推荐等场景：仅填充卡片所需字段与热度。 */
+    public static RelicVO toBrowseCard(ArtifactEntity entity, String imageUrl) {
+        return RelicVO.builder()
+                .objectId(entity.getObjectId())
+                .title(entity.getTitle())
+                .period(entity.getPeriod())
+                .type(entity.getType())
+                .imageUrl(imageUrl)
+                .popularity(RelicPopularitySupport.compute(entity.getCreateTime()))
+                .build();
+    }
 }

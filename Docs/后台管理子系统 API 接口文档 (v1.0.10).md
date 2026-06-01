@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.9)
+# 后台管理子系统 API 接口文档 (v1.0.10)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.10 | 2026-06-01 | **多图存储**：`artifact` 移除 **`image_url`/`image_path`**；新增表 **`artifact_image`**（`file_name` UUID v7 + `artifact_id`）。**§5.2.2** 删除 **`imagePath`**；**`imageUrl`/`imageUrls`** 由 `artifact_image` 组装；**§5.2.8** 上传改为追加多图，响应 **`fileName`**；**§5.2.7** 创建不再自动生成图片。 |
 | v1.0.9 | 2026-06-01 | **§5.2** 与 `admin-server` 实现对齐：`popularity`/`imageUrls` 出现场景、多图组装顺序与主图解析、`sort` 大小写与错误文案、`pageSize` 截断策略、相关推荐卡片字段与空 `period` 跳档、错误码表；修正 CSV 小节对 **§5.2.7** 的交叉引用。 |
 | v1.0.8 | 2026-06-01 | **M2 文物浏览增强**：**§5.2.3** 列表新增 Query `period`、`type`、`material`、`sort` 及响应字段 `popularity`；新增 **§5.2.4** `GET /api/v1/data/relics/filters`；**§5.2.5** 详情补充 `imageUrls`；新增 **§5.2.6** `GET /api/v1/data/relics/{objectId}/related`；原 **§5.2.4～§5.2.10** 顺延为 **§5.2.7～§5.2.13**；**§5.2.1** 补充 filters、related 的 GET 鉴权说明。 |
 | v1.0.7 | 2026-05-27 | 重写 **§7 日志管理** 为与 **§5.3 博物馆数据**一致的结构化风格（权限、对象模型、分页/详情/导出等）；新增日志下载接口 **GET** `/api/v1/logs/download`，约定导出返回的 `downloadUrl` 指向该 API。 |
@@ -538,7 +539,7 @@ Header 携带 Token。
 
 ### 5.2 文物数据 CRUD
 
-关系型存储对应数据库表 **`artifact`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4**）；REST 资源集合路径为 **`/api/v1/data/relics`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。
+关系型存储对应数据库表 **`artifact`** 与 **`artifact_image`**（字段定义见《后台管理子系统 数据库设计文档》**§3.4** 及 PRD V2）；REST 资源集合路径为 **`/api/v1/data/relics`**，JSON 字段一律 **camelCase**，主键字段 **`objectId`**（UUID v4 字符串）。图片元数据仅存 **`artifact_image.file_name`**（落盘文件名，UUID v7 + 扩展名）。
 
 #### 5.2.1 权限
 
@@ -559,8 +560,7 @@ Header 携带 Token。
 | dimensions | string | 否 | 最大 **300** 字符 |
 | museumId | string | 创建请求**必填**；响应必填 | 关联 `museum.object_id`，最大 **36** 字符（与 **`CreateRelicRequest`** 一致） |
 | detailUrl | string | 是 | 最大 **1000** 字符 |
-| imageUrl | string | 响应必填；**创建 JSON 勿传** | 最大 **1000** 字符；由服务端按配置 **`app.relics.image-public-base-url`** 与 **`objectId`** 生成并落库 |
-| imagePath | string | 响应必填；**创建 JSON 勿传** | 最大 **500** 字符；由服务端生成，形如 **`relics-images/{objectId}.{ext}`**（**`ext`** 默认 **`jpg`**，见 **`app.relics.default-image-extension`**） |
+| imageUrl | string | 否 | 封面图完整 HTTP(S) URL；由 **`artifact_image`** 中该文物 **`file_name` 升序首张** 与 **`app.relics.image-public-base-url`** 拼接；无图时为 **`null`** |
 | creditLine | string | 否 | 最大 **500** 字符 |
 | accessionNumber | string | 否 | 最大 **100** 字符 |
 | crawlDate | string | 是 | 日期 **`yyyy-MM-dd`** |
@@ -568,7 +568,7 @@ Header 携带 Token。
 | updateTime | string | 否 | **ISO 8601** |
 | isDeleted | number | 否 | **0** 正常，**1** 已软删；创建时默认 **0**；**列表接口不返回** `isDeleted=1` 的记录 |
 | popularity | number | 凡返回完整或卡片 **`RelicObject`** 时均有 | 非负整数 **0～999999**；服务端按 `createTime` 的日期与当前日期的整天数差计算：`max(0, 1000 - daysSinceCreate)`（`createTime` 为 `null` 时为 **0**）。列表 **`sort=hot`** 与相关推荐排序在 SQL 层使用等价表达式 `GREATEST(0, 1000 - DATEDIFF(CURDATE(), DATE(create_time)))` |
-| imageUrls | string[] | 仅 **详情** `GET .../{objectId}` | 多图轮播完整 HTTP(S) URL；**`imageUrls[0]`** 与 **`imageUrl`** 一致；长度 **≥ 1**。列表、创建、更新响应**不填充**该字段（JSON 中通常省略） |
+| imageUrls | string[] | 仅 **详情** `GET .../{objectId}` | 该文物在 **`artifact_image`** 中全部行（**`file_name` 升序**）对应的完整 HTTP(S) URL；**`imageUrls[0]`** 与 **`imageUrl`** 一致；长度 **≥ 1** 方可返回详情 **200**。列表、创建、更新响应**不填充**该字段 |
 
 #### 5.2.3 分页列表
 
@@ -613,8 +613,7 @@ Header 携带 Token。
         "dimensions": "高 50cm",
         "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
         "detailUrl": "https://museum.example.org/object/12345",
-        "imageUrl": "https://cdn.example.org/relics/12345.jpg",
-        "imagePath": "/data/images/12345.jpg",
+        "imageUrl": "https://cdn.example.org/relics-images/0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg",
         "creditLine": "Courtesy of Example Museum",
         "accessionNumber": "1924.123",
         "crawlDate": "2026-05-01",
@@ -666,14 +665,8 @@ Header 携带 Token。
 **GET** `/api/v1/data/relics/{objectId}`
 
 - 路径参数 **`objectId`** 为文物主键。  
-- 资源不存在，或 **`isDeleted=1`**，或 **`RelicImageUrlsResolver` 解析后无任何可访问图片 URL**：返回 **404**，`code` **404**，`message` 建议 **「资源不存在」**，`data` 为 **null**。  
-- 成功时 `data` 为单个 **`RelicObject`**；在列表字段基础上增加 **`imageUrls`**（**≥ 1** 个完整 HTTP(S) URL）及 **`popularity`**。  
-- **主图 `imageUrl` 解析**（`RelicPublicUrlBuilder.resolvePrimary`）：若库表 **`image_url`** 已是 **`http://` 或 `https://` 开头**，则原样使用（超过 **1000** 字符时截断至 **1000**）；否则按 **`image_path`** 与 **`app.relics.image-public-base-url`** 拼接。未配置基址且需拼接时，写操作类接口返回 **500**（见创建逻辑）。  
-- **多图 `imageUrls` 组装**（`RelicImageUrlsResolver`）：  
-  1. 将主图 URL 置于首位（见上）；  
-  2. 扫描图片落盘根目录（**`RelicImageStorage`**，默认 classpath **`relics-images/`**）下文件名匹配 **`{objectId}.{ext}`** 或 **`{objectId}-{n}.{ext}`**（**`n` 仅 2～9**；**`ext`** 为 **jpg/jpeg/png/gif/webp**，扩展名大小写不敏感）；  
-  3. 磁盘文件按附加序号升序、同序号按文件名字典序排序后追加；  
-  4. **`LinkedHashSet` 去重**后返回；**`imageUrl`** 与 **`imageUrls[0]`** 一致。
+- 资源不存在，或 **`isDeleted=1`**，或 **`artifact_image` 中无该文物记录**：返回 **404**，`code` **404**，`message` 建议 **「资源不存在」**，`data` 为 **null**。  
+- 成功时 `data` 为单个 **`RelicObject`**；查询 **`artifact_image WHERE artifact_id = ? ORDER BY file_name ASC`**，将全部 **`file_name`** 转为 **`{image-public-base-url}/relics-images/{file_name}`** 填入 **`imageUrls`**；**`imageUrl`** = **`imageUrls[0]`**。
 
 **Response (200)**
 
@@ -691,12 +684,11 @@ Header 携带 Token。
     "dimensions": "高 50cm",
     "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
     "detailUrl": "https://museum.example.org/object/12345",
-    "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
+    "imageUrl": "https://cdn.example.org/relics-images/0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg",
     "imageUrls": [
-      "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
-      "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001-2.jpg"
+      "https://cdn.example.org/relics-images/0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg",
+      "https://cdn.example.org/relics-images/0195e8b5-8a1b-7c2d-9d5e-2b3c4d5e6f7a.png"
     ],
-    "imagePath": "relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
     "creditLine": "Courtesy of Example Museum",
     "accessionNumber": "1924.123",
     "crawlDate": "2026-05-01",
@@ -718,7 +710,7 @@ Header 携带 Token。
   1. 当前文物 **`period` 非空**时：同 **`period`**；  
   2. 仍不足且 **`type` 非空**：同 **`type`**；  
   3. 仍不足且 **`museumId` 非空**：同 **`museumId`**。  
-- **`related[]` 卡片字段**（`RelicAssembler.toBrowseCard`，非完整 `RelicObject`）：**`objectId`**、**`title`**、**`period`**、**`type`**、**`imageUrl`**、**`popularity`**。主图解析规则同详情 **`resolvePrimary`**；无法解析时 **`imageUrl`** 可能为 **`null`**。
+- **`related[]` 卡片字段**（`RelicAssembler.toBrowseCard`）：**`objectId`**、**`title`**、**`period`**、**`type`**、**`imageUrl`**、**`popularity`**。**`imageUrl`** 为对应文物 **`artifact_image` 首张**；无图时为 **`null`**。
 
 **Response (200)**
 
@@ -734,7 +726,7 @@ Header 携带 Token。
         "title": "青铜爵",
         "period": "商代晚期",
         "type": "青铜器",
-        "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440002.jpg",
+        "imageUrl": "https://cdn.example.org/relics-images/0195e8b6-9b2c-7d3e-0e6f-3c4d5e6f7a8b.jpg",
         "popularity": 975
       }
     ]
@@ -748,10 +740,9 @@ Header 携带 Token。
 
 **Request Body**
 
-- 客户端**勿传** `objectId`、`createTime`、`updateTime`、`imageUrl`、`imagePath`（由服务端生成并写入 **`artifact`**）；`isDeleted` 可不传，默认 **0**。  
+- 客户端**勿传** `objectId`、`createTime`、`updateTime`；`isDeleted` 可不传，默认 **0**。  
 - **必填**：`title`、`museumId`、`detailUrl`、`crawlDate`；其余字段按 **§5.2.2** 选填。  
-- **`imageUrl` / `imagePath`**：请求 DTO 中**不包含**该二字段；若客户端仍发送同名 JSON 键（例如经网关透传），由 **Jackson** 默认行为**忽略**未知属性，**不得**采用客户端值落库。  
-- **`imageUrl` / `imagePath`** 生成规则：须配置 **`app.relics.image-public-base-url`**（非空）；未配置时创建失败（**`code`** **500**，`message` 含配置提示）。**`imagePath`** 形如 **`relics-images/{objectId}.{defaultExt}`**，**`defaultExt`** 来自 **`app.relics.default-image-extension`**（默认 **`jpg`**）。  
+- 创建时**不**写入 **`artifact_image`**，**不**生成占位图；响应中 **`imageUrl`** 为 **`null`**，无 **`imageUrls`**。须通过 **§5.2.8** 上传后才有图。  
 - 任一字符串超出最大长度或 Bean 校验失败：**400**。
 
 ```json
@@ -797,8 +788,8 @@ Header 携带 Token。
 **存储路径与文件命名**
 
 - **源码目录（Maven `admin-server` 模块）**：**`admin-server/src/main/resources/relics-images/`**（可通过 **`app.relic-images.directory`** 覆盖落盘根路径；未配置时开发环境常用 **`target/classes/relics-images`**）。打包后默认位于 classpath **`relics-images/`** 下。  
-- **文件名**：**`{objectId}.<扩展名>`**，其中 **`<扩展名>`** 与实际上传格式对应且为小写（见上表）。  
-- **覆盖**：同一 **`objectId`** 再次上传且扩展名相同时**覆盖**原文件；若新扩展名与旧文件不同，服务端**删除**同 **`objectId`** 下其它扩展名的旧文件，避免磁盘残留。
+- **文件名**：**`{UUID v7}.<扩展名>`**（如 **`0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg`**），与 **`artifact.object_id` 脱钩**。  
+- **追加**：每次成功上传 **INSERT** 一行 **`artifact_image`**，**不覆盖**历史图片；并更新 **`artifact.update_time`**。
 
 **Response (200)**
 
@@ -808,13 +799,13 @@ Header 携带 Token。
   "message": "success",
   "data": {
     "objectId": "550e8400-e29b-41d4-a716-446655440001",
-    "imagePath": "relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
-    "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg"
+    "fileName": "0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg",
+    "imageUrl": "https://cdn.example.org/relics-images/0195e8b4-7c2a-7b3d-8c4d-1a2b3c4d5e6f.jpg"
   }
 }
 ```
 
-- **`data.imagePath`**、**`data.imageUrl`**：与 **§5.2.2** **`RelicObject`** 字段语义一致；上传成功后服务端**同步更新**当前文物在库表中的 **`image_path`**、**`image_url`** 及 **`update_time`**。
+- **`data.fileName`**：新写入 **`artifact_image.file_name`**。**`data.imageUrl`**：`{image-public-base-url}/relics-images/{fileName}`。
 
 #### 5.2.9 更新
 
@@ -860,7 +851,7 @@ Header 携带 Token。
 | CSV：文件超过 **10 MB** | 413 | 413 |
 | CSV：表头缺列、列冲突、无数据行、行必填缺失、日期非法、重复行、数据行超 **2000**、非 UTF-8 / 解析失败等 | 400 | 400 |
 | CSV：整批插入事务内失败 | 500 或 400 | 500 或 400 |
-| 详情：目标文物不存在、已软删，或无法解析任何图片 URL | 404 | 404 |
+| 详情：目标文物不存在、已软删，或 `artifact_image` 无记录 | 404 | 404 |
 | 相关推荐：当前文物不存在或已软删 | 404 | 404 |
 | 更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
 
@@ -893,7 +884,7 @@ Header 携带 Token。
 
 **事务与插入**
 
-- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.7** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
+- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.7** 相同的插入逻辑（**不**创建图片行）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
 - **成功**：**`code`** **200**，**`data`** 为对象 **`{ "objectIds": [ ... ] }`**，数组元素为按插入顺序生成的 **`objectId`**（UUID 字符串）。
 
 **Response (200)**

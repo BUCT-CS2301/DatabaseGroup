@@ -8,18 +8,17 @@ import com.platform.admin.common.ErrorCode;
 import com.platform.admin.common.PageResult;
 import com.platform.admin.common.log.OperationLogWriter;
 import com.platform.admin.common.util.ClientIpUtils;
-import com.platform.admin.config.RelicAutoImageProperties;
 import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
+import com.platform.admin.modules.artifact.entity.ArtifactImageEntity;
 import com.platform.admin.modules.artifact.mapper.ArtifactMapper;
 import com.platform.admin.modules.artifact.mapper.RelicAssembler;
 import com.platform.admin.modules.artifact.mapper.RelicFilterMuseumRow;
 import com.platform.admin.modules.artifact.service.ArtifactService;
+import com.platform.admin.modules.artifact.service.RelicImageService;
 import com.platform.admin.modules.artifact.support.RelicCsvImportParser;
 import com.platform.admin.modules.artifact.support.RelicImageFormat;
-import com.platform.admin.modules.artifact.support.RelicImageStorage;
-import com.platform.admin.modules.artifact.support.RelicImageUrlsResolver;
 import com.platform.admin.modules.artifact.support.RelicPublicUrlBuilder;
 import com.platform.admin.modules.artifact.support.RelicSort;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
@@ -49,9 +48,6 @@ import java.util.Iterator;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,7 +60,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 @Service
 public class ArtifactServiceImpl implements ArtifactService {
@@ -80,10 +75,8 @@ public class ArtifactServiceImpl implements ArtifactService {
     private final SecurityUtil securityUtil;
     private final OperationLogWriter operationLogWriter;
     private final ArtifactMapper artifactMapper;
-    private final RelicImageStorage relicImageStorage;
-    private final RelicAutoImageProperties relicAutoImageProperties;
+    private final RelicImageService relicImageService;
     private final RelicPublicUrlBuilder relicPublicUrlBuilder;
-    private final RelicImageUrlsResolver relicImageUrlsResolver;
     private final RelicCsvImportParser relicCsvImportParser;
     private final TransactionTemplate transactionTemplate;
 
@@ -91,19 +84,15 @@ public class ArtifactServiceImpl implements ArtifactService {
             SecurityUtil securityUtil,
             OperationLogWriter operationLogWriter,
             ArtifactMapper artifactMapper,
-            RelicImageStorage relicImageStorage,
-            RelicAutoImageProperties relicAutoImageProperties,
+            RelicImageService relicImageService,
             RelicPublicUrlBuilder relicPublicUrlBuilder,
-            RelicImageUrlsResolver relicImageUrlsResolver,
             RelicCsvImportParser relicCsvImportParser,
             PlatformTransactionManager platformTransactionManager) {
         this.securityUtil = securityUtil;
         this.operationLogWriter = operationLogWriter;
         this.artifactMapper = artifactMapper;
-        this.relicImageStorage = relicImageStorage;
-        this.relicAutoImageProperties = relicAutoImageProperties;
+        this.relicImageService = relicImageService;
         this.relicPublicUrlBuilder = relicPublicUrlBuilder;
-        this.relicImageUrlsResolver = relicImageUrlsResolver;
         this.relicCsvImportParser = relicCsvImportParser;
         this.transactionTemplate = new TransactionTemplate(platformTransactionManager);
     }
@@ -145,7 +134,12 @@ public class ArtifactServiceImpl implements ArtifactService {
         Page<ArtifactEntity> mpPage = new Page<>(safePage, safePageSize);
         Page<ArtifactEntity> result = artifactMapper.selectPage(mpPage, wrapper);
 
-        List<RelicVO> records = result.getRecords().stream().map(RelicAssembler::toVO).toList();
+        List<String> artifactIds =
+                result.getRecords().stream().map(ArtifactEntity::getObjectId).toList();
+        Map<String, String> coverUrls = relicImageService.getPrimaryPublicUrlByArtifactIds(artifactIds);
+        List<RelicVO> records = result.getRecords().stream()
+                .map(e -> RelicAssembler.toVO(e, coverUrls.get(e.getObjectId())))
+                .toList();
         log.info(
                 "event=relic_browse_list_search page={} pageSize={} sort={} result_count={}",
                 safePage,
@@ -180,14 +174,13 @@ public class ArtifactServiceImpl implements ArtifactService {
     @Override
     public RelicVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
-        List<String> imageUrls = relicImageUrlsResolver.resolve(entity);
+        List<String> imageUrls = relicImageService.listPublicUrls(objectId);
         if (imageUrls.isEmpty()) {
-            log.warn("relic detail has no resolvable images objectId={}", objectId);
+            log.warn("relic detail has no images in artifact_image objectId={}", objectId);
             throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
         }
-        String primary = imageUrls.get(0);
         log.info("event=relic_browse_detail_view object_id={} image_count={}", objectId, imageUrls.size());
-        return RelicAssembler.toVO(entity, imageUrls, primary);
+        return RelicAssembler.toVO(entity, imageUrls, imageUrls.get(0));
     }
 
     @Override
@@ -234,9 +227,6 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
         LocalDateTime now = LocalDateTime.now();
         String objectId = UUID.randomUUID().toString();
-        String defaultExt = resolvedDefaultImageExtension();
-        String imagePath = buildRelicImagePath(objectId, defaultExt);
-        String imageUrl = buildRelicImageUrl(imagePath);
         ArtifactEntity entity = ArtifactEntity.builder()
                 .objectId(objectId)
                 .title(request.getTitle())
@@ -247,8 +237,6 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .dimensions(request.getDimensions())
                 .museumId(request.getMuseumId())
                 .detailUrl(request.getDetailUrl())
-                .imageUrl(imageUrl)
-                .imagePath(imagePath)
                 .creditLine(request.getCreditLine())
                 .accessionNumber(request.getAccessionNumber())
                 .crawlDate(request.getCrawlDate())
@@ -262,7 +250,7 @@ public class ArtifactServiceImpl implements ArtifactService {
                 "title", request.getTitle(),
                 "museumId", request.getMuseumId()
         ));
-        return RelicAssembler.toVO(entity);
+        return RelicAssembler.toVO(entity, null);
     }
 
     @Override
@@ -275,7 +263,7 @@ public class ArtifactServiceImpl implements ArtifactService {
         artifactMapper.updateById(entity);
         log.info("event=data_relic_update_success objectId={}", objectId);
         writeOperationLog("UPDATE", objectId, request);
-        return RelicAssembler.toVO(entity);
+        return RelicAssembler.toVO(entity, relicImageService.getPrimaryPublicUrl(objectId));
     }
 
     @Override
@@ -311,66 +299,22 @@ public class ArtifactServiceImpl implements ArtifactService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的图片格式");
         }
         RelicImageFormat format = formatOpt.get();
-        String extWithDot = format.extension();
-        Path root = relicImageStorage.getRoot();
-        String fileName = objectId + extWithDot;
-        Path target = root.resolve(fileName);
-        try {
-            Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            deleteStaleRelicImages(root, objectId, fileName);
-        } catch (IOException e) {
-            log.warn(
-                    "event=relic_image_upload_fail object_id={} error_code=io_error http_status=500",
-                    objectId,
-                    e);
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "保存图片失败");
-        }
-        String imagePath = "relics-images/" + fileName;
-        String imageUrl = buildRelicImageUrl(imagePath);
-        entity.setImagePath(imagePath);
-        entity.setImageUrl(imageUrl);
+        ArtifactImageEntity stored = relicImageService.storeImage(objectId, data, format);
+        String imageUrl = relicPublicUrlBuilder.fromFileName(stored.getFileName());
         entity.setUpdateTime(LocalDateTime.now());
         artifactMapper.updateById(entity);
         log.info(
-                "event=relic_image_upload_success object_id={} file_ext={} file_size_bytes={}",
+                "event=relic_image_upload_success object_id={} file_name={} file_size_bytes={}",
                 objectId,
-                extWithDot.substring(1),
+                stored.getFileName(),
                 data.length);
-        writeOperationLog("UPDATE", objectId, Map.of("action", "UPLOAD_IMAGE", "imagePath", imagePath));
+        writeOperationLog(
+                "UPDATE", objectId, Map.of("action", "UPLOAD_IMAGE", "fileName", stored.getFileName()));
         return RelicImageUploadVO.builder()
                 .objectId(objectId)
-                .imagePath(imagePath)
+                .fileName(stored.getFileName())
                 .imageUrl(imageUrl)
                 .build();
-    }
-
-    /**
-     * 配置中的默认扩展名，小写、不含点；用于创建文物时的预期文件名。
-     */
-    private String resolvedDefaultImageExtension() {
-        String ext = relicAutoImageProperties.getDefaultImageExtension();
-        if (!StringUtils.hasText(ext)) {
-            return "jpg";
-        }
-        ext = ext.strip().toLowerCase(Locale.ROOT);
-        if (ext.startsWith(".")) {
-            ext = ext.substring(1);
-        }
-        if (!ext.matches("[a-z0-9]{1,10}")) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "app.relics.default-image-extension 配置非法");
-        }
-        return ext;
-    }
-
-    private String buildRelicImagePath(String objectId, String extensionWithoutDot) {
-        return "relics-images/" + objectId + "." + extensionWithoutDot;
-    }
-
-    /**
-     * 将 {@code imagePublicBaseUrl} 与相对 {@code imagePath} 拼接为完整 URL（PRD 约定一种实现，见 application.yml）。
-     */
-    private String buildRelicImageUrl(String imagePath) {
-        return relicPublicUrlBuilder.fromImagePath(imagePath);
     }
 
     private void applySort(LambdaQueryWrapper<ArtifactEntity> wrapper, RelicSort sort) {
@@ -426,7 +370,7 @@ public class ArtifactServiceImpl implements ArtifactService {
         List<ArtifactEntity> batch = artifactMapper.selectList(wrapper);
         for (ArtifactEntity entity : batch) {
             exclude.add(entity.getObjectId());
-            String imageUrl = relicPublicUrlBuilder.resolvePrimary(entity.getImageUrl(), entity.getImagePath());
+            String imageUrl = relicImageService.getPrimaryPublicUrl(entity.getObjectId());
             sink.add(RelicAssembler.toBrowseCard(entity, imageUrl));
             if (sink.size() >= max) {
                 break;
@@ -465,32 +409,6 @@ public class ArtifactServiceImpl implements ArtifactService {
             }
         } catch (IOException e) {
             return Optional.empty();
-        }
-    }
-
-    /**
-     * 同一文物主键下仅保留当前扩展名文件，删除其它后缀的旧图（PRD P1 推荐，避免磁盘残留）。
-     */
-    private void deleteStaleRelicImages(Path root, String objectId, String keepFileName) {
-        String prefix = objectId + ".";
-        if (!Files.isDirectory(root)) {
-            return;
-        }
-        try (Stream<Path> stream = Files.list(root)) {
-            stream
-                    .filter(p -> {
-                        String name = p.getFileName().toString();
-                        return name.startsWith(prefix) && !name.equals(keepFileName);
-                    })
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException ex) {
-                            log.warn("failed to delete stale relic image path={}", p.getFileName());
-                        }
-                    });
-        } catch (IOException e) {
-            log.warn("failed to list relic images for cleanup objectId={}", objectId, e);
         }
     }
 
@@ -572,12 +490,6 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
         if (request.getDetailUrl() != null) {
             entity.setDetailUrl(request.getDetailUrl());
-        }
-        if (request.getImageUrl() != null) {
-            entity.setImageUrl(request.getImageUrl());
-        }
-        if (request.getImagePath() != null) {
-            entity.setImagePath(request.getImagePath());
         }
         if (request.getCreditLine() != null) {
             entity.setCreditLine(request.getCreditLine());

@@ -19,10 +19,10 @@ public class RelicVO {
     private String dimensions;
     private String museumId;
     private String detailUrl;
+    /** 封面图：{@code artifact_image} 中按 file_name 升序首张的公网 URL */
     private String imageUrl;
     /** 详情多图轮播；列表接口可不返回 */
     private List<String> imageUrls;
-    private String imagePath;
     /** 浏览热度，列表与相关推荐使用 */
     private Integer popularity;
     private String creditLine;

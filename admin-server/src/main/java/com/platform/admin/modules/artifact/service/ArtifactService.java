@@ -39,7 +39,7 @@ public interface ArtifactService {
      *
      * @param objectId 文物主键，与路径参数一致
      * @param file     multipart 字段 {@code file}
-     * @return 含 {@code imagePath}、{@code imageUrl} 的成功视图（与库表一致）
+     * @return 含 {@code fileName}、{@code imageUrl} 的成功视图
      */
     RelicImageUploadVO uploadRelicImage(String objectId, MultipartFile file);
 

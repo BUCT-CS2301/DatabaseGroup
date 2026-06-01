@@ -23,7 +23,6 @@ app:
     trust-mock-token-claims: false
   relic-images:
     directory: ""
-  # 创建文物时自动生成 image_path / image_url（PRD）；image-public-base-url 建议在 application-dev.yml 等环境文件中配置
+  # artifact_image 落盘文件对外 URL 基址；建议在 application-dev.yml 等环境文件中配置
   relics:
-    default-image-extension: jpg
     image-public-base-url: ""

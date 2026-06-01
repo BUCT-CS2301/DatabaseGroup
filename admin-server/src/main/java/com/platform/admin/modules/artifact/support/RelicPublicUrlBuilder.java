@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 将库内相对 {@code imagePath} 或已有完整 URL 转为对外可访问的 HTTP(S) 地址。
+ * 将 {@code artifact_image.file_name} 转为对外可访问的 HTTP(S) URL。
  */
 @Component
 public class RelicPublicUrlBuilder {
@@ -19,46 +19,34 @@ public class RelicPublicUrlBuilder {
     }
 
     /**
-     * 由 {@code relics-images/...} 相对路径拼接公网基址。
-     *
-     * @param imagePath 形如 relics-images/{objectId}.jpg
-     * @return 完整 URL
+     * @param fileName 落盘文件名，如 {@code 01932a1b-....jpg}
+     * @return 完整 URL；文件名为空时返回 {@code null}
      */
-    public String fromImagePath(String imagePath) {
-        if (!StringUtils.hasText(imagePath)) {
+    public String fromFileName(String fileName) {
+        if (!StringUtils.hasText(fileName)) {
+            return null;
+        }
+        return fromRelativePath("relics-images/" + fileName.strip());
+    }
+
+    private String fromRelativePath(String relativePath) {
+        if (!StringUtils.hasText(relativePath)) {
             return null;
         }
         String base = requireBaseUrl();
         String trimmedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
-        String path = imagePath.strip();
+        String path = relativePath.strip();
         if (path.startsWith("/")) {
             path = path.substring(1);
         }
         return trimmedBase + "/" + path;
     }
 
-    /**
-     * 优先使用已是 HTTP(S) 的 {@code imageUrl}，否则按 {@code imagePath} 拼接。
-     */
-    public String resolvePrimary(String imageUrl, String imagePath) {
-        if (StringUtils.hasText(imageUrl)) {
-            String trimmed = imageUrl.strip();
-            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                return trimmed.length() > 1000 ? trimmed.substring(0, 1000) : trimmed;
-            }
-        }
-        return fromImagePath(imagePath);
-    }
-
-    public String fileNameToUrl(String fileName) {
-        return fromImagePath("relics-images/" + fileName);
-    }
-
     private String requireBaseUrl() {
         String base = relicAutoImageProperties.getImagePublicBaseUrl();
         if (!StringUtils.hasText(base)) {
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR, "未配置 app.relics.image-public-base-url，无法生成 imageUrl");
+                    ErrorCode.INTERNAL_ERROR, "未配置 app.relics.image-public-base-url，无法生成图片 URL");
         }
         return base.strip();
     }
