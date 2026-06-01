@@ -211,7 +211,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Refresh, Files, UserFilled, WarnTriangleFilled, Lock } from '@element-plus/icons-vue'
 import type { LogRecord, LogStats } from '@/api/log'
@@ -336,8 +336,14 @@ const loadLogList = async () => {
     }
     
     const res = await getLogList(params)
-    logList.value = res.data
-    pagination.total = res.total
+    console.log('Log API response:', res)
+    if (res && res.data && Array.isArray(res.data)) {
+      logList.value = res.data
+      pagination.total = res.total || 0
+    } else {
+      console.warn('Invalid log data format, using mock data')
+      throw new Error('Invalid data format')
+    }
   } catch (error) {
     console.error('Failed to load log list:', error)
     logList.value = [
@@ -444,8 +450,14 @@ const handleCurrentChange = (page: number) => {
 
 // 初始化
 onMounted(() => {
+  console.log('LogListView mounted')
   loadLogList()
   loadStats()
+})
+
+// 清理
+onUnmounted(() => {
+  console.log('LogListView unmounted')
 })
 </script>
 

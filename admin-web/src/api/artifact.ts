@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿import request from '@/utils/request'
+﻿﻿﻿import request from '@/utils/request'
 
 export interface RelicObject {
   objectId: string
@@ -73,10 +73,37 @@ export interface ImportCsvResponse {
   objectIds: string[]
 }
 
+export interface ArtifactFilters {
+  periods: string[]
+  types: string[]
+  materials: string[]
+  museums: string[]
+}
+
+export interface InteractionSummary {
+  artifactId: string
+  likeCount: number
+  favoriteCount: number
+  commentCount: number
+  viewCount: number
+}
+
+export interface RelatedArtifact {
+  objectId: string
+  title: string
+  period: string
+  type: string
+  museum: string
+  imageUrl: string
+}
+
 export async function getRelicList(params: {
   page?: number
   pageSize?: number
   keyword?: string
+  period?: string
+  type?: string
+  material?: string
   museumId?: string
 }): Promise<PageResult<RelicObject>> {
   const res = await request.get('/v1/data/relics', { params })
@@ -144,4 +171,19 @@ export async function getMuseumList(params: {
 export async function getAllMuseums(): Promise<MuseumObject[]> {
   const res = await request.get('/v1/data/museums', { params: { page: 1, pageSize: 100 } })
   return res.data.records
+}
+
+export async function getArtifactFilters(): Promise<ArtifactFilters> {
+  const res = await request.get('/v1/artifacts/filters')
+  return res.data
+}
+
+export async function getInteractionSummary(objectId: string): Promise<InteractionSummary> {
+  const res = await request.get(`/v1/artifacts/${objectId}/interaction-summary`)
+  return res.data
+}
+
+export async function getRelatedArtifacts(objectId: string, count?: number): Promise<{ items: RelatedArtifact[] }> {
+  const res = await request.get(`/v1/artifacts/${objectId}/related`, { params: { count } })
+  return res.data
 }
