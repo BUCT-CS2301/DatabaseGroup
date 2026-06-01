@@ -28,9 +28,10 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
     private final SecurityLogWriter securityLogWriter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          ObjectMapper objectMapper,
-                          SecurityLogWriter securityLogWriter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            ObjectMapper objectMapper,
+            SecurityLogWriter securityLogWriter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.objectMapper = objectMapper;
         this.securityLogWriter = securityLogWriter;
@@ -46,8 +47,16 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+<<<<<<< HEAD
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh-token").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/mock-token").permitAll()
+=======
+                .requestMatchers(
+                        "/api/v1/auth/login",
+                        "/api/v1/auth/mock-token",
+                        "/api/v1/auth/refresh-token"
+                ).permitAll()
+>>>>>>> b7165ce738d4456bfef24be21576df1e6c8b5523
                 .requestMatchers(HttpMethod.POST, "/api/v1/logs/export").hasAuthority(LogPermissions.EXPORT)
                 .requestMatchers(HttpMethod.GET, "/api/v1/logs/download").hasAuthority(LogPermissions.EXPORT)
                 .requestMatchers(HttpMethod.GET, "/api/v1/logs/operation", "/api/v1/logs/operation/**",

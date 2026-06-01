@@ -7,7 +7,9 @@ import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.service.ArtifactService;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
+import com.platform.admin.modules.artifact.vo.RelicFiltersVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
+import com.platform.admin.modules.artifact.vo.RelicRelatedVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,9 +47,27 @@ public class RelicController {
             @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
             @RequestParam(defaultValue = "10") @Min(value = 1, message = "pageSize最小为1") Long pageSize,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String museumId
+            @RequestParam(required = false) String museumId,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String material,
+            @RequestParam(required = false) String sort
     ) {
-        return Result.success(artifactService.pageRelics(page, pageSize, keyword, museumId));
+        return Result.success(
+                artifactService.pageRelics(page, pageSize, keyword, museumId, period, type, material, sort));
+    }
+
+    /**
+     * 文物浏览筛选项（须在 {@code /{objectId}} 之前注册，避免路径冲突）。
+     */
+    @GetMapping("/filters")
+    public Result<RelicFiltersVO> getRelicFilters() {
+        return Result.success(artifactService.getRelicFilters());
+    }
+
+    @GetMapping("/{objectId}/related")
+    public Result<RelicRelatedVO> getRelicRelated(@PathVariable String objectId) {
+        return Result.success(artifactService.getRelicRelated(objectId));
     }
 
     @GetMapping("/{objectId}")
