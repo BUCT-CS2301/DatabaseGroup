@@ -169,8 +169,6 @@ CREATE TABLE IF NOT EXISTS `artifact` (
     `dimensions`       VARCHAR(300),
     `museum_id`        VARCHAR(36),
     `detail_url`       VARCHAR(1000) NOT NULL,
-    `image_url`        VARCHAR(1000) NOT NULL,
-    `image_path`       VARCHAR(500),
     `credit_line`      VARCHAR(500),
     `accession_number` VARCHAR(100),
     `crawl_date`       DATE         NOT NULL,

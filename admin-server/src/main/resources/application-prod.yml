@@ -1,4 +1,8 @@
 app:
+  auth:
+    mock-token:
+      enabled: false
+    trust-mock-token-claims: false
   relics:
     image-public-base-url: "${APP_RELICS_IMAGE_PUBLIC_BASE_URL:http://localhost:8080}"
 spring:

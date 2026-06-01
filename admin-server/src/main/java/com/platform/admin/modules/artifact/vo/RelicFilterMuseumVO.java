@@ -9,10 +9,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RelicImageUploadVO {
+public class RelicFilterMuseumVO {
     private String objectId;
-    /** 新落盘文件名（UUID v7 + 扩展名）。 */
-    private String fileName;
-    /** 与 {@code fileName} 对应的完整 HTTP(S) URL。 */
-    private String imageUrl;
+    private String name;
+    private String nameCn;
 }
