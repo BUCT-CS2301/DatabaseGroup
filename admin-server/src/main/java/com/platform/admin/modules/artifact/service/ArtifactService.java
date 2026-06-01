@@ -5,14 +5,28 @@ import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
+import com.platform.admin.modules.artifact.vo.RelicFiltersVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
+import com.platform.admin.modules.artifact.vo.RelicRelatedVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface ArtifactService {
-    PageResult<RelicVO> pageRelics(long page, long pageSize, String keyword, String museumId);
+    PageResult<RelicVO> pageRelics(
+            long page,
+            long pageSize,
+            String keyword,
+            String museumId,
+            String period,
+            String type,
+            String material,
+            String sort);
+
+    RelicFiltersVO getRelicFilters();
 
     RelicVO getRelicById(String objectId);
+
+    RelicRelatedVO getRelicRelated(String objectId);
 
     RelicVO createRelic(CreateRelicRequest request);
 

@@ -14,13 +14,20 @@ import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
 import com.platform.admin.modules.artifact.mapper.ArtifactMapper;
 import com.platform.admin.modules.artifact.mapper.RelicAssembler;
+import com.platform.admin.modules.artifact.mapper.RelicFilterMuseumRow;
 import com.platform.admin.modules.artifact.service.ArtifactService;
 import com.platform.admin.modules.artifact.support.RelicCsvImportParser;
 import com.platform.admin.modules.artifact.support.RelicImageFormat;
 import com.platform.admin.modules.artifact.support.RelicImageStorage;
+import com.platform.admin.modules.artifact.support.RelicImageUrlsResolver;
+import com.platform.admin.modules.artifact.support.RelicPublicUrlBuilder;
+import com.platform.admin.modules.artifact.support.RelicSort;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
+import com.platform.admin.modules.artifact.vo.RelicFilterMuseumVO;
+import com.platform.admin.modules.artifact.vo.RelicFiltersVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
+import com.platform.admin.modules.artifact.vo.RelicRelatedVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.SecurityUtil;
@@ -48,12 +55,15 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 @Service
@@ -63,6 +73,8 @@ public class ArtifactServiceImpl implements ArtifactService {
     private static final long DEFAULT_PAGE_SIZE = 10L;
     private static final long MAX_PAGE_SIZE = 100L;
     private static final long MAX_RELIC_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final int FILTER_OPTION_LIMIT = 500;
+    private static final int RELATED_LIMIT = 10;
     private static final String MODULE_RELIC = "RELIC";
 
     private final SecurityUtil securityUtil;
@@ -70,6 +82,8 @@ public class ArtifactServiceImpl implements ArtifactService {
     private final ArtifactMapper artifactMapper;
     private final RelicImageStorage relicImageStorage;
     private final RelicAutoImageProperties relicAutoImageProperties;
+    private final RelicPublicUrlBuilder relicPublicUrlBuilder;
+    private final RelicImageUrlsResolver relicImageUrlsResolver;
     private final RelicCsvImportParser relicCsvImportParser;
     private final TransactionTemplate transactionTemplate;
 
@@ -79,6 +93,8 @@ public class ArtifactServiceImpl implements ArtifactService {
             ArtifactMapper artifactMapper,
             RelicImageStorage relicImageStorage,
             RelicAutoImageProperties relicAutoImageProperties,
+            RelicPublicUrlBuilder relicPublicUrlBuilder,
+            RelicImageUrlsResolver relicImageUrlsResolver,
             RelicCsvImportParser relicCsvImportParser,
             PlatformTransactionManager platformTransactionManager) {
         this.securityUtil = securityUtil;
@@ -86,14 +102,25 @@ public class ArtifactServiceImpl implements ArtifactService {
         this.artifactMapper = artifactMapper;
         this.relicImageStorage = relicImageStorage;
         this.relicAutoImageProperties = relicAutoImageProperties;
+        this.relicPublicUrlBuilder = relicPublicUrlBuilder;
+        this.relicImageUrlsResolver = relicImageUrlsResolver;
         this.relicCsvImportParser = relicCsvImportParser;
         this.transactionTemplate = new TransactionTemplate(platformTransactionManager);
     }
 
     @Override
-    public PageResult<RelicVO> pageRelics(long page, long pageSize, String keyword, String museumId) {
+    public PageResult<RelicVO> pageRelics(
+            long page,
+            long pageSize,
+            String keyword,
+            String museumId,
+            String period,
+            String type,
+            String material,
+            String sort) {
         long safePage = page <= 0 ? DEFAULT_PAGE : page;
         long safePageSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
+        RelicSort relicSort = RelicSort.parse(sort);
 
         LambdaQueryWrapper<ArtifactEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ArtifactEntity::getIsDeleted, 0);
@@ -104,22 +131,76 @@ public class ArtifactServiceImpl implements ArtifactService {
         if (StringUtils.hasText(museumId)) {
             wrapper.eq(ArtifactEntity::getMuseumId, museumId);
         }
-        wrapper.orderByDesc(ArtifactEntity::getCreateTime);
+        if (StringUtils.hasText(period)) {
+            wrapper.eq(ArtifactEntity::getPeriod, period);
+        }
+        if (StringUtils.hasText(type)) {
+            wrapper.eq(ArtifactEntity::getType, type);
+        }
+        if (StringUtils.hasText(material)) {
+            wrapper.eq(ArtifactEntity::getMaterial, material);
+        }
+        applySort(wrapper, relicSort);
 
         Page<ArtifactEntity> mpPage = new Page<>(safePage, safePageSize);
         Page<ArtifactEntity> result = artifactMapper.selectPage(mpPage, wrapper);
 
         List<RelicVO> records = result.getRecords().stream().map(RelicAssembler::toVO).toList();
-        log.info("event=data_relic_list_view page={} pageSize={} hasKeyword={} hasMuseumFilter={}",
-                safePage, safePageSize, StringUtils.hasText(keyword), StringUtils.hasText(museumId));
+        log.info(
+                "event=relic_browse_list_search page={} pageSize={} sort={} result_count={}",
+                safePage,
+                safePageSize,
+                relicSort.queryValue(),
+                result.getTotal());
         return new PageResult<>(records, result.getTotal(), safePage, safePageSize);
+    }
+
+    @Override
+    public RelicFiltersVO getRelicFilters() {
+        List<String> periods = artifactMapper.selectDistinctPeriods(FILTER_OPTION_LIMIT);
+        List<String> types = artifactMapper.selectDistinctTypes(FILTER_OPTION_LIMIT);
+        List<String> materials = artifactMapper.selectDistinctMaterials(FILTER_OPTION_LIMIT);
+        List<RelicFilterMuseumVO> museums = artifactMapper.selectMuseumsWithArtifacts(FILTER_OPTION_LIMIT).stream()
+                .map(this::toFilterMuseum)
+                .toList();
+        log.info(
+                "event=relic_browse_filters_load period_count={} type_count={} material_count={} museum_count={}",
+                periods.size(),
+                types.size(),
+                materials.size(),
+                museums.size());
+        return RelicFiltersVO.builder()
+                .periods(periods)
+                .types(types)
+                .materials(materials)
+                .museums(museums)
+                .build();
     }
 
     @Override
     public RelicVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
-        log.info("event=data_relic_detail_view objectId={}", objectId);
-        return RelicAssembler.toVO(entity);
+        List<String> imageUrls = relicImageUrlsResolver.resolve(entity);
+        if (imageUrls.isEmpty()) {
+            log.warn("relic detail has no resolvable images objectId={}", objectId);
+            throw new BusinessException(ErrorCode.NOT_FOUND, "资源不存在");
+        }
+        String primary = imageUrls.get(0);
+        log.info("event=relic_browse_detail_view object_id={} image_count={}", objectId, imageUrls.size());
+        return RelicAssembler.toVO(entity, imageUrls, primary);
+    }
+
+    @Override
+    public RelicRelatedVO getRelicRelated(String objectId) {
+        ArtifactEntity current = getNotDeletedById(objectId);
+        List<RelicVO> related = collectRelated(current, RELATED_LIMIT);
+        String periodTag = StringUtils.hasText(current.getPeriod()) ? current.getPeriod() : null;
+        log.info(
+                "event=relic_browse_related_view object_id={} period_tag={} related_count={}",
+                objectId,
+                periodTag,
+                related.size());
+        return RelicRelatedVO.builder().periodTag(periodTag).related(related).build();
     }
 
     @Override
@@ -289,16 +370,68 @@ public class ArtifactServiceImpl implements ArtifactService {
      * 将 {@code imagePublicBaseUrl} 与相对 {@code imagePath} 拼接为完整 URL（PRD 约定一种实现，见 application.yml）。
      */
     private String buildRelicImageUrl(String imagePath) {
-        String base = relicAutoImageProperties.getImagePublicBaseUrl();
-        if (!StringUtils.hasText(base)) {
-            throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR, "未配置 app.relics.image-public-base-url，无法生成 imageUrl");
+        return relicPublicUrlBuilder.fromImagePath(imagePath);
+    }
+
+    private void applySort(LambdaQueryWrapper<ArtifactEntity> wrapper, RelicSort sort) {
+        switch (sort) {
+            case HOT -> wrapper.last(
+                    "ORDER BY GREATEST(0, 1000 - DATEDIFF(CURDATE(), DATE(create_time))) DESC, create_time DESC");
+            case NAME -> wrapper.orderByAsc(ArtifactEntity::getTitle);
+            case PERIOD -> wrapper.last("ORDER BY (period IS NULL), period ASC, title ASC");
         }
-        String trimmed = base.strip();
-        if (trimmed.endsWith("/")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
+    }
+
+    private RelicFilterMuseumVO toFilterMuseum(RelicFilterMuseumRow row) {
+        return RelicFilterMuseumVO.builder()
+                .objectId(row.getObjectId())
+                .name(row.getName())
+                .nameCn(row.getNameCn())
+                .build();
+    }
+
+    private List<RelicVO> collectRelated(ArtifactEntity current, int max) {
+        Set<String> exclude = new HashSet<>();
+        exclude.add(current.getObjectId());
+        List<RelicVO> related = new ArrayList<>();
+        if (StringUtils.hasText(current.getPeriod())) {
+            appendRelated(related, exclude, max, w -> w.eq(ArtifactEntity::getPeriod, current.getPeriod()));
         }
-        return trimmed + "/" + imagePath;
+        if (related.size() < max && StringUtils.hasText(current.getType())) {
+            appendRelated(related, exclude, max, w -> w.eq(ArtifactEntity::getType, current.getType()));
+        }
+        if (related.size() < max && StringUtils.hasText(current.getMuseumId())) {
+            appendRelated(related, exclude, max, w -> w.eq(ArtifactEntity::getMuseumId, current.getMuseumId()));
+        }
+        return related;
+    }
+
+    private void appendRelated(
+            List<RelicVO> sink,
+            Set<String> exclude,
+            int max,
+            Consumer<LambdaQueryWrapper<ArtifactEntity>> criteria) {
+        int remaining = max - sink.size();
+        if (remaining <= 0) {
+            return;
+        }
+        LambdaQueryWrapper<ArtifactEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ArtifactEntity::getIsDeleted, 0);
+        if (!exclude.isEmpty()) {
+            wrapper.notIn(ArtifactEntity::getObjectId, exclude);
+        }
+        criteria.accept(wrapper);
+        wrapper.last(
+                "ORDER BY GREATEST(0, 1000 - DATEDIFF(CURDATE(), DATE(create_time))) DESC LIMIT " + remaining);
+        List<ArtifactEntity> batch = artifactMapper.selectList(wrapper);
+        for (ArtifactEntity entity : batch) {
+            exclude.add(entity.getObjectId());
+            String imageUrl = relicPublicUrlBuilder.resolvePrimary(entity.getImageUrl(), entity.getImagePath());
+            sink.add(RelicAssembler.toBrowseCard(entity, imageUrl));
+            if (sink.size() >= max) {
+                break;
+            }
+        }
     }
 
     /**

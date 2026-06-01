@@ -32,20 +32,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final LogPermissionResolver logPermissionResolver;
     private final boolean trustMockTokenClaims;
 
-    public JwtAuthenticationFilter(JwtProvider jwtProvider,
-                                   UserMapper userMapper,
-                                   LogPermissionResolver logPermissionResolver,
-                                   @Value("${spring.profiles.active:}") String activeProfile) {
+    public JwtAuthenticationFilter(
+            JwtProvider jwtProvider,
+            UserMapper userMapper,
+            LogPermissionResolver logPermissionResolver,
+            @Value("${app.auth.trust-mock-token-claims:false}") boolean trustMockTokenClaims) {
         this.jwtProvider = jwtProvider;
         this.userMapper = userMapper;
         this.logPermissionResolver = logPermissionResolver;
-        this.trustMockTokenClaims = activeProfile.contains("dev");
+        this.trustMockTokenClaims = trustMockTokenClaims;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
             String token = authHeader.substring(BEARER_PREFIX.length());
@@ -54,14 +56,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String userId = claims.getSubject();
                 String userTypeClaim = claims.get("userType", String.class);
                 User user = userMapper.selectById(userId);
-                if (user != null && !"DISABLED".equals(user.getStatus())) {
-                    establishAuthentication(userId, UserType.fromValue(user.getUserType()), logPermissionResolver.resolve(user), request);
+                if (isActiveUser(user)) {
+                    establishAuthentication(
+                            userId,
+                            UserType.fromValue(user.getUserType()),
+                            logPermissionResolver.resolve(user),
+                            request);
                 } else if (trustMockTokenClaims) {
-                    // dev 环境 mock token 允许按 claim 放权，便于联调
                     UserType userType = UserType.fromValue(userTypeClaim);
                     User mockUser = new User();
                     mockUser.setUserType(userType.name());
-                    mockUser.setStatus("ACTIVE");
+                    mockUser.setStatus("ENABLED");
                     establishAuthentication(userId, userType, logPermissionResolver.resolve(mockUser), request);
                 }
             }
@@ -69,19 +74,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    private static boolean isActiveUser(User user) {
+        if (user == null) {
+            return false;
+        }
+        if ("DISABLED".equals(user.getStatus())) {
+            return false;
+        }
+        return user.getIsDeleted() == null || user.getIsDeleted() == 0;
+    }
+
     private void establishAuthentication(
             String userId,
             UserType userType,
             List<String> logPermissions,
-            HttpServletRequest request
-    ) {
+            HttpServletRequest request) {
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority("ROLE_" + userType.name()));
         logPermissions.forEach(permission -> authorities.add(new SimpleGrantedAuthority(permission)));
         AuthUser authUser = new AuthUser(userId, userType, Set.copyOf(logPermissions));
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                authUser, null, authorities
-        );
+                authUser, null, authorities);
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }

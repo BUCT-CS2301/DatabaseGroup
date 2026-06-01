@@ -1,9 +1,11 @@
-# 后台管理子系统 API 接口文档 (v1.0.7)
+# 后台管理子系统 API 接口文档 (v1.0.9)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.0.9 | 2026-06-01 | **§5.2** 与 `admin-server` 实现对齐：`popularity`/`imageUrls` 出现场景、多图组装顺序与主图解析、`sort` 大小写与错误文案、`pageSize` 截断策略、相关推荐卡片字段与空 `period` 跳档、错误码表；修正 CSV 小节对 **§5.2.7** 的交叉引用。 |
+| v1.0.8 | 2026-06-01 | **M2 文物浏览增强**：**§5.2.3** 列表新增 Query `period`、`type`、`material`、`sort` 及响应字段 `popularity`；新增 **§5.2.4** `GET /api/v1/data/relics/filters`；**§5.2.5** 详情补充 `imageUrls`；新增 **§5.2.6** `GET /api/v1/data/relics/{objectId}/related`；原 **§5.2.4～§5.2.10** 顺延为 **§5.2.7～§5.2.13**；**§5.2.1** 补充 filters、related 的 GET 鉴权说明。 |
 | v1.0.7 | 2026-05-27 | 重写 **§7 日志管理** 为与 **§5.3 博物馆数据**一致的结构化风格（权限、对象模型、分页/详情/导出等）；新增日志下载接口 **GET** `/api/v1/logs/download`，约定导出返回的 `downloadUrl` 指向该 API。 |
 | v1.0.6 | 2026-05-27 | **§7 日志管理**与代码实现对齐：补充分页与参数校验规则、默认值、返回字段模型、错误码；明确日志导出仅支持 `CSV`、`type` 取值为 `OPERATION/SYSTEM/SECURITY`，并补充当前实现返回本地 `file://` 下载地址。 |
 | v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
@@ -541,7 +543,7 @@ Header 携带 Token。
 #### 5.2.1 权限
 
 - 所有接口须在 Header 携带 **`Authorization: Bearer {accessToken}`**；未携带、格式错误、过期或签名校验失败返回 **401**（见 **§1.5**）。  
-- **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/{objectId}`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
+- **GET** `/api/v1/data/relics`、**GET** `/api/v1/data/relics/filters`、**GET** `/api/v1/data/relics/{objectId}`、**GET** `/api/v1/data/relics/{objectId}/related`：任意 **有效** Token 即可访问（不区分 `user_type`）。  
 - **POST** `/api/v1/data/relics`、**POST** `/api/v1/data/relics/import-csv`、**POST** `/api/v1/data/relics/{objectId}/image`、**PUT** `/api/v1/data/relics/{objectId}`、**DELETE** `/api/v1/data/relics/{objectId}`：仅当当前登录用户在 **`user`** 表中 **`user_type` 取值为 `ADMIN`** 时允许；否则返回 **403**，`code` 为 **403**，`message` 建议为 **「无操作权限」**。文物写权限**不**依据 RBAC 的 `roles` / `roleCode` 判定。
 
 #### 5.2.2 文物对象 `RelicObject`（与 `artifact` 对齐）
@@ -565,6 +567,8 @@ Header 携带 Token。
 | createTime | string | 响应必填；创建请求勿传 | **ISO 8601**：`yyyy-MM-ddTHH:mm:ss` |
 | updateTime | string | 否 | **ISO 8601** |
 | isDeleted | number | 否 | **0** 正常，**1** 已软删；创建时默认 **0**；**列表接口不返回** `isDeleted=1` 的记录 |
+| popularity | number | 凡返回完整或卡片 **`RelicObject`** 时均有 | 非负整数 **0～999999**；服务端按 `createTime` 的日期与当前日期的整天数差计算：`max(0, 1000 - daysSinceCreate)`（`createTime` 为 `null` 时为 **0**）。列表 **`sort=hot`** 与相关推荐排序在 SQL 层使用等价表达式 `GREATEST(0, 1000 - DATEDIFF(CURDATE(), DATE(create_time)))` |
+| imageUrls | string[] | 仅 **详情** `GET .../{objectId}` | 多图轮播完整 HTTP(S) URL；**`imageUrls[0]`** 与 **`imageUrl`** 一致；长度 **≥ 1**。列表、创建、更新响应**不填充**该字段（JSON 中通常省略） |
 
 #### 5.2.3 分页列表
 
@@ -575,11 +579,23 @@ Header 携带 Token。
 | 参数      | 类型   | 必填 | 说明 |
 | :-------- | :----- | :--- | :--- |
 | page      | number | 否   | 默认 **1**，最小 **1** |
-| pageSize  | number | 否   | 默认 **10**，最大 **100**；超出时**推荐**按 **100** 截断，或返回 **400**（须在实现与 README 中声明策略） |
+| pageSize  | number | 否   | 默认 **10**，最大 **100**；**当前实现**：大于 **100** 时**静默截断为 100**（不返回 **400**） |
 | keyword   | string | 否   | 模糊匹配 **`title`** 或 **`accessionNumber`** |
 | museumId  | string | 否   | 精确匹配 **`museum_id`** |
+| period    | string | 否   | 精确匹配 **`period`**；空字符串视为未传 |
+| type      | string | 否   | 精确匹配 **`type`** |
+| material  | string | 否   | 精确匹配 **`material`** |
+| sort      | string | 否   | 排序：`hot`（默认）、`name`、`period`；**大小写不敏感**；未传或仅空白视为 `hot`；非法值 **400**，`message`：**「sort 取值须为 hot、name 或 period」** |
 
-**Response (200)** — 分页结构见 **§1.4**。
+**排序规则**
+
+| sort | 规则 |
+| :--- | :--- |
+| `hot`（默认） | `GREATEST(0, 1000 - DATEDIFF(CURDATE(), DATE(create_time)))` 降序，相同则 `create_time` 降序 |
+| `name` | `title` 升序（UTF-8 字典序） |
+| `period` | `period IS NULL` 排末尾，其次 `period` 升序，再 `title` 升序 |
+
+**Response (200)** — 分页结构见 **§1.4**；`records[]` 每项含 **`popularity`**。
 
 ```json
 {
@@ -604,7 +620,8 @@ Header 携带 Token。
         "crawlDate": "2026-05-01",
         "createTime": "2026-05-02T10:00:00",
         "updateTime": "2026-05-10T08:30:00",
-        "isDeleted": 0
+        "isDeleted": 0,
+        "popularity": 980
       }
     ],
     "total": 1,
@@ -614,13 +631,49 @@ Header 携带 Token。
 }
 ```
 
-#### 5.2.4 详情
+#### 5.2.4 筛选元数据
+
+**GET** `/api/v1/data/relics/filters`
+
+- 返回当前库内未删除文物实际存在的年代、类型、材质，以及至少关联 1 件文物的博物馆列表。  
+- 各维度 DISTINCT 后升序，单维度最多 **500** 条（`period`/`type`/`material` 排除 `NULL` 与空字符串）。  
+- 某维度无数据时对应数组为 **`[]`**，仍返回 **200**。
+- **路由**：须在服务端注册于 **`GET .../{objectId}`** 之前（当前 `RelicController` 已按此顺序声明），避免路径 `filters` 被当作 `objectId`。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "periods": ["商代晚期", "唐代"],
+    "types": ["青铜器", "陶瓷"],
+    "materials": ["青铜", "瓷"],
+    "museums": [
+      {
+        "objectId": "m-550e8400-e29b-41d4-a716-446655440000",
+        "name": "Example Museum",
+        "nameCn": "示例博物馆"
+      }
+    ]
+  }
+}
+```
+
+#### 5.2.5 详情
 
 **GET** `/api/v1/data/relics/{objectId}`
 
 - 路径参数 **`objectId`** 为文物主键。  
-- 资源不存在，或 **`isDeleted=1`**：返回 **404**，`code` **404**，`data` 为 **null**。  
-- 成功时 `data` 为单个 **`RelicObject`**（结构同列表项）。
+- 资源不存在，或 **`isDeleted=1`**，或 **`RelicImageUrlsResolver` 解析后无任何可访问图片 URL**：返回 **404**，`code` **404**，`message` 建议 **「资源不存在」**，`data` 为 **null**。  
+- 成功时 `data` 为单个 **`RelicObject`**；在列表字段基础上增加 **`imageUrls`**（**≥ 1** 个完整 HTTP(S) URL）及 **`popularity`**。  
+- **主图 `imageUrl` 解析**（`RelicPublicUrlBuilder.resolvePrimary`）：若库表 **`image_url`** 已是 **`http://` 或 `https://` 开头**，则原样使用（超过 **1000** 字符时截断至 **1000**）；否则按 **`image_path`** 与 **`app.relics.image-public-base-url`** 拼接。未配置基址且需拼接时，写操作类接口返回 **500**（见创建逻辑）。  
+- **多图 `imageUrls` 组装**（`RelicImageUrlsResolver`）：  
+  1. 将主图 URL 置于首位（见上）；  
+  2. 扫描图片落盘根目录（**`RelicImageStorage`**，默认 classpath **`relics-images/`**）下文件名匹配 **`{objectId}.{ext}`** 或 **`{objectId}-{n}.{ext}`**（**`n` 仅 2～9**；**`ext`** 为 **jpg/jpeg/png/gif/webp**，扩展名大小写不敏感）；  
+  3. 磁盘文件按附加序号升序、同序号按文件名字典序排序后追加；  
+  4. **`LinkedHashSet` 去重**后返回；**`imageUrl`** 与 **`imageUrls[0]`** 一致。
 
 **Response (200)**
 
@@ -638,19 +691,58 @@ Header 携带 Token。
     "dimensions": "高 50cm",
     "museumId": "m-550e8400-e29b-41d4-a716-446655440000",
     "detailUrl": "https://museum.example.org/object/12345",
-    "imageUrl": "https://cdn.example.org/relics/12345.jpg",
-    "imagePath": null,
+    "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
+    "imageUrls": [
+      "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
+      "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440001-2.jpg"
+    ],
+    "imagePath": "relics-images/550e8400-e29b-41d4-a716-446655440001.jpg",
     "creditLine": "Courtesy of Example Museum",
     "accessionNumber": "1924.123",
     "crawlDate": "2026-05-01",
     "createTime": "2026-05-02T10:00:00",
     "updateTime": "2026-05-10T08:30:00",
-    "isDeleted": 0
+    "isDeleted": 0,
+    "popularity": 980
   }
 }
 ```
 
-#### 5.2.5 创建
+#### 5.2.6 相关推荐
+
+**GET** `/api/v1/data/relics/{objectId}/related`
+
+- 当前文物不存在或已软删：**404**。  
+- 成功返回 **`periodTag`**（当前文物 `period` 非空时原样返回，否则 **`null`**）与 **`related`**（最多 **10** 条，不含当前文物）。  
+- 推荐优先级（按档补足至 **10** 条，每档内按 SQL 热度降序，单档最多取当前剩余名额）：  
+  1. 当前文物 **`period` 非空**时：同 **`period`**；  
+  2. 仍不足且 **`type` 非空**：同 **`type`**；  
+  3. 仍不足且 **`museumId` 非空**：同 **`museumId`**。  
+- **`related[]` 卡片字段**（`RelicAssembler.toBrowseCard`，非完整 `RelicObject`）：**`objectId`**、**`title`**、**`period`**、**`type`**、**`imageUrl`**、**`popularity`**。主图解析规则同详情 **`resolvePrimary`**；无法解析时 **`imageUrl`** 可能为 **`null`**。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "periodTag": "商代晚期",
+    "related": [
+      {
+        "objectId": "550e8400-e29b-41d4-a716-446655440002",
+        "title": "青铜爵",
+        "period": "商代晚期",
+        "type": "青铜器",
+        "imageUrl": "https://cdn.example.org/relics-images/550e8400-e29b-41d4-a716-446655440002.jpg",
+        "popularity": 975
+      }
+    ]
+  }
+}
+```
+
+#### 5.2.7 创建
 
 **POST** `/api/v1/data/relics`
 
@@ -680,7 +772,7 @@ Header 携带 Token。
 
 **Response (200)**：`data` 为创建后的完整 **`RelicObject`**。
 
-#### 5.2.6 上传文物图片
+#### 5.2.8 上传文物图片
 
 **POST** `/api/v1/data/relics/{objectId}/image`
 
@@ -724,7 +816,7 @@ Header 携带 Token。
 
 - **`data.imagePath`**、**`data.imageUrl`**：与 **§5.2.2** **`RelicObject`** 字段语义一致；上传成功后服务端**同步更新**当前文物在库表中的 **`image_path`**、**`image_url`** 及 **`update_time`**。
 
-#### 5.2.7 更新
+#### 5.2.9 更新
 
 **PUT** `/api/v1/data/relics/{objectId}`
 
@@ -740,7 +832,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.2.8 删除（软删除）
+#### 5.2.10 删除（软删除）
 
 **DELETE** `/api/v1/data/relics/{objectId}`
 
@@ -755,21 +847,24 @@ Header 携带 Token。
 }
 ```
 
-#### 5.2.9 错误与行为小结
+#### 5.2.11 错误与行为小结
 
 | 场景 | HTTP | code |
 | :--- | :--- | :--- |
 | 未认证 / Token 无效 | 401 | 401 |
 | 写操作且 `user.user_type` ≠ `ADMIN` | 403 | 403 |
-| 参数缺失或超长、非法 `page` / `pageSize`（若实现选择校验而非截断） | 400 | 400 |
+| 参数缺失或超长、非法 `page` / `pageSize`（`page` 或 `pageSize` &lt; 1，由 `@Min` 校验） | 400 | 400 |
+| 列表非法 `sort` | 400 | 400 |
 | 上传：非白名单图片类型、空文件、缺 `file`、非法 multipart | 400 | 400 |
 | 上传：单文件超过 **10 MB** | 413 | 413 |
 | CSV：文件超过 **10 MB** | 413 | 413 |
 | CSV：表头缺列、列冲突、无数据行、行必填缺失、日期非法、重复行、数据行超 **2000**、非 UTF-8 / 解析失败等 | 400 | 400 |
 | CSV：整批插入事务内失败 | 500 或 400 | 500 或 400 |
-| 详情/更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
+| 详情：目标文物不存在、已软删，或无法解析任何图片 URL | 404 | 404 |
+| 相关推荐：当前文物不存在或已软删 | 404 | 404 |
+| 更新/删除/上传图片：目标文物不存在或已软删 | 404 | 404 |
 
-#### 5.2.10 CSV 批量创建文物
+#### 5.2.12 CSV 批量创建文物
 
 **POST** `/api/v1/data/relics/import-csv`
 
@@ -798,7 +893,7 @@ Header 携带 Token。
 
 **事务与插入**
 
-- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.5** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
+- 全部行校验通过后，在**同一数据库事务**内按 CSV 数据行顺序依次调用与 **§5.2.7** 相同的插入逻辑（含 **`imageUrl`/`imagePath`** 服务端生成）。任一行插入失败：**整批回滚**，返回 **`code`** **500** 或 **400**（依错误类型）。  
 - **成功**：**`code`** **200**，**`data`** 为对象 **`{ "objectIds": [ ... ] }`**，数组元素为按插入顺序生成的 **`objectId`**（UUID 字符串）。
 
 **Response (200)**
@@ -816,7 +911,7 @@ Header 携带 Token。
 }
 ```
 
-**配置说明（与 §5.2.5 共用）**
+**配置说明（与 §5.2.7 共用）**
 
 - **`app.relics.image-public-base-url`**、**`app.relics.default-image-extension`**：见 **`application.yml`** / 各环境 **`application-*.yml`**。
 
