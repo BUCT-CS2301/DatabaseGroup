@@ -13,15 +13,6 @@ import java.util.Map;
 
 @Component
 public class JwtProvider {
-<<<<<<< HEAD
-    private final SecretKey key;
-    private final long expiration;
-
-    public JwtProvider(@Value("${app.jwt.secret}") String secret,
-                       @Value("${app.jwt.expiration-ms:7200000}") long expiration) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.expiration = expiration;
-=======
 
     private final SecretKey key;
     private final long expiration;
@@ -35,7 +26,6 @@ public class JwtProvider {
         }
         this.key = Keys.hmacShaKeyFor(keyBytes);
         this.expiration = accessTokenTtlSeconds * 1000L;
->>>>>>> b7165ce738d4456bfef24be21576df1e6c8b5523
     }
 
     public String generateToken(String userId) {

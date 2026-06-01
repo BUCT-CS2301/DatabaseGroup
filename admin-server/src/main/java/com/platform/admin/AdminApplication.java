@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @SpringBootApplication
 @EnableAsync
 @EnableConfigurationProperties({RelicImageProperties.class, RelicAutoImageProperties.class, BackupProperties.class})
-@MapperScan({"com.platform.admin.modules.artifact.mapper", "com.platform.admin.modules.museum.mapper", "com.platform.admin.modules.system.mapper", "com.platform.admin.modules.audit.mapper", "com.platform.admin.modules.role.mapper", "com.platform.admin.modules.user.mapper", "com.platform.admin.modules.backup.mapper", "com.platform.admin.modules.log.mapper"})
+@MapperScan({"com.platform.admin.modules.artifact.mapper", "com.platform.admin.modules.museum.mapper", "com.platform.admin.modules.system.mapper", "com.platform.admin.modules.audit.mapper", "com.platform.admin.modules.role.mapper", "com.platform.admin.modules.user.mapper", "com.platform.admin.modules.backup.mapper", "com.platform.admin.modules.log.mapper", "com.platform.admin.modules.interaction.mapper"})
 public class AdminApplication {
     public static void main(String[] args) {
         SpringApplication.run(AdminApplication.class, args);
