@@ -1,9 +1,10 @@
-# 后台管理子系统 API 接口文档 (v1.0.7)
+# 后台管理子系统 API 接口文档 (v1.1.0)
 
 ## 文档版本修订
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.1.0 | 2026-06-01 | 新增 **§5.6 文物前端交互接口**（筛选选项、交互摘要、相关推荐、评论点赞等）和 **§5.7 用户个人中心接口**（收藏管理、浏览历史、评论历史、点赞列表等）。 |
 | v1.0.7 | 2026-05-27 | 重写 **§7 日志管理** 为与 **§5.3 博物馆数据**一致的结构化风格（权限、对象模型、分页/详情/导出等）；新增日志下载接口 **GET** `/api/v1/logs/download`，约定导出返回的 `downloadUrl` 指向该 API。 |
 | v1.0.6 | 2026-05-27 | **§7 日志管理**与代码实现对齐：补充分页与参数校验规则、默认值、返回字段模型、错误码；明确日志导出仅支持 `CSV`、`type` 取值为 `OPERATION/SYSTEM/SECURITY`，并补充当前实现返回本地 `file://` 下载地址。 |
 | v1.0.5 | 2026-05-21 | 按照模块重新组织文档结构，分为：讲解审核、数据管理、备份与恢复、用户管理四大模块；保留 v1.0.4 所有功能内容，补充各模块功能说明。 |
@@ -979,7 +980,538 @@ Header 携带 Token。
 **DELETE** `/api/v1/data/ugc/{objectId}`
 *仅支持删除，不可修改用户内容。*
 
-### 5.6 数据一致性检查（选做）
+### 5.6 文物前端交互接口
+
+#### 5.6.1 文物筛选选项接口
+
+**GET** `/api/v1/artifacts/filters`
+
+获取所有可用的筛选选项（年代、类型、材质、博物馆）。
+
+**权限**：任意有效 Token 即可访问。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "periods": ["唐", "宋", "元", "明", "清"],
+    "types": ["瓷器", "青铜器", "书画", "玉器", "漆器"],
+    "materials": ["青花瓷", "粉彩", "青铜", "丝绸", "玉石"],
+    "museums": ["大英博物馆", "大都会艺术博物馆", "克利夫兰艺术博物馆"]
+  }
+}
+```
+
+#### 5.6.2 文物交互摘要接口
+
+**GET** `/api/v1/artifacts/{objectId}/interaction-summary`
+
+获取文物交互摘要（点赞数、收藏数、评论数等）。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| objectId | string | 是   | 文物唯一标识 |
+
+**权限**：任意有效 Token 即可访问。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "artifactId": "artifact_001",
+    "likeCount": 156,
+    "favoriteCount": 89,
+    "commentCount": 23,
+    "viewCount": 1234
+  }
+}
+```
+
+#### 5.6.3 相关文物推荐接口
+
+**GET** `/api/v1/artifacts/{objectId}/related`
+
+获取相关文物推荐。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| objectId | string | 是   | 文物唯一标识 |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| count   | number | 否   | 推荐数量，默认 6 |
+
+**权限**：任意有效 Token 即可访问。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "objectId": "artifact_045",
+        "title": "元青花鬼谷子下山图罐",
+        "period": "元",
+        "type": "瓷器",
+        "museum": "大英博物馆",
+        "imageUrl": "https://xxx/thumbnail/artifact_045.jpg"
+      }
+    ]
+  }
+}
+```
+
+#### 5.6.4 获取文物评论列表
+
+**GET** `/api/v1/artifacts/{artifactId}/comments`
+
+获取文物评论列表（分页）。
+
+**路径参数**
+| 参数名     | 类型   | 必填 | 说明       |
+| :--------- | :----- | :--- | :--------- |
+| artifactId | string | 是   | 文物ID     |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| page    | number | 否   | 页码，默认 1 |
+| size    | number | 否   | 每页条数，默认 20 |
+
+**权限**：任意有效 Token 即可访问。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 45,
+    "page": 1,
+    "size": 20,
+    "items": [
+      {
+        "objectId": "comment_001",
+        "userId": "user_123",
+        "userName": "张三",
+        "userAvatar": "https://xxx/avatar.jpg",
+        "content": "这件文物太精美了！",
+        "likeCount": 12,
+        "replyCount": 3,
+        "createTime": "2026-05-01T10:30:00Z",
+        "replies": [
+          {
+            "objectId": "reply_001",
+            "userId": "user_456",
+            "userName": "李四",
+            "content": "同意！",
+            "createTime": "2026-05-01T11:00:00Z"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### 5.6.5 发布评论/回复
+
+**POST** `/api/v1/artifacts/{artifactId}/comments`
+
+用户发表评论或回复评论。
+
+**路径参数**
+| 参数名     | 类型   | 必填 | 说明       |
+| :--------- | :----- | :--- | :--------- |
+| artifactId | string | 是   | 文物ID     |
+
+**Request Body**
+
+```json
+{
+  "content": "这件文物太精美了！",
+  "parentId": null
+}
+```
+
+**字段说明**
+| 参数名   | 类型   | 必填 | 说明               |
+| :------- | :----- | :--- | :----------------- |
+| content  | string | 是   | 评论内容，最大500字符 |
+| parentId | string | 否   | 父评论ID（回复时填写） |
+
+**权限**：需要有效 Token 认证。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "comment_001",
+    "status": "PENDING",
+    "message": "评论已提交，等待审核"
+  }
+}
+```
+
+**实现说明**：评论内容自动进行敏感词检测，通过审核的评论直接发布，否则进入人工审核队列。
+
+#### 5.6.6 评论点赞
+
+**POST** `/api/v1/comments/{commentId}/likes`
+
+用户对评论点赞。
+
+**路径参数**
+| 参数名    | 类型   | 必填 | 说明     |
+| :-------- | :----- | :--- | :------- |
+| commentId | string | 是   | 评论ID   |
+
+**权限**：需要有效 Token 认证。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "likeCount": 13,
+    "isLiked": true
+  }
+}
+```
+
+#### 5.6.7 文物点赞
+
+**POST** `/api/v1/artifacts/{artifactId}/likes`
+
+用户对文物点赞。
+
+**路径参数**
+| 参数名     | 类型   | 必填 | 说明     |
+| :--------- | :----- | :--- | :------- |
+| artifactId | string | 是   | 文物ID   |
+
+**权限**：需要有效 Token 认证。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "likeCount": 157,
+    "isLiked": true
+  }
+}
+```
+
+#### 5.6.8 取消文物点赞
+
+**DELETE** `/api/v1/artifacts/{artifactId}/likes`
+
+取消文物点赞。
+
+**路径参数**
+| 参数名     | 类型   | 必填 | 说明     |
+| :--------- | :----- | :--- | :------- |
+| artifactId | string | 是   | 文物ID   |
+
+**权限**：需要有效 Token 认证。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "likeCount": 156,
+    "isLiked": false
+  }
+}
+```
+
+### 5.7 用户个人中心接口
+
+#### 5.7.1 获取用户收藏列表
+
+**GET** `/api/v1/users/{username}/favorites`
+
+获取用户收藏数据。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| page    | number | 否   | 页码，默认 1 |
+| size    | number | 否   | 每页条数，默认 20 |
+
+**权限**：需要有效 Token 认证，且只能访问自己的收藏数据。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 45,
+    "page": 1,
+    "size": 20,
+    "items": [
+      {
+        "artifactId": "artifact_001",
+        "groupName": "我的收藏",
+        "createTime": "2026-05-01T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+#### 5.7.2 添加收藏
+
+**POST** `/api/v1/users/{username}/favorites`
+
+添加文物收藏。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Request Body**
+
+```json
+{
+  "artifactId": "artifact_001",
+  "groupName": "我的收藏"
+}
+```
+
+**权限**：需要有效 Token 认证，且只能操作自己的收藏数据。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "favorite_001",
+    "artifactId": "artifact_001",
+    "groupName": "我的收藏",
+    "createTime": "2026-05-01T10:30:00Z"
+  }
+}
+```
+
+#### 5.7.3 取消收藏
+
+**DELETE** `/api/v1/users/{username}/favorites/{artifactId}`
+
+取消文物收藏。
+
+**路径参数**
+| 参数名     | 类型   | 必填 | 说明       |
+| :--------- | :----- | :--- | :--------- |
+| username   | string | 是   | 用户名     |
+| artifactId | string | 是   | 文物ID     |
+
+**权限**：需要有效 Token 认证，且只能操作自己的收藏数据。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null
+}
+```
+
+#### 5.7.4 获取用户浏览历史
+
+**GET** `/api/v1/users/{username}/history`
+
+获取用户浏览历史。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| page    | number | 否   | 页码，默认 1 |
+| size    | number | 否   | 每页条数，默认 20 |
+
+**权限**：需要有效 Token 认证，且只能访问自己的浏览历史。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 100,
+    "page": 1,
+    "size": 20,
+    "items": [
+      {
+        "artifactId": "artifact_001",
+        "browseTime": "2026-05-01T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+#### 5.7.5 记录浏览历史
+
+**POST** `/api/v1/users/{username}/history`
+
+记录文物浏览历史。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Request Body**
+
+```json
+{
+  "artifactId": "artifact_001"
+}
+```
+
+**权限**：需要有效 Token 认证，且只能操作自己的浏览历史。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "history_001",
+    "artifactId": "artifact_001",
+    "browseTime": "2026-05-01T10:30:00Z"
+  }
+}
+```
+
+#### 5.7.6 获取用户评论历史
+
+**GET** `/api/v1/users/{username}/comments`
+
+获取用户评论历史。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| page    | number | 否   | 页码，默认 1 |
+| size    | number | 否   | 每页条数，默认 20 |
+
+**权限**：需要有效 Token 认证，且只能访问自己的评论历史。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 12,
+    "page": 1,
+    "size": 20,
+    "items": [
+      {
+        "objectId": "comment_001",
+        "artifactId": "artifact_123",
+        "artifactTitle": "青花云龙纹象耳瓶",
+        "content": "这件文物太精美了！",
+        "status": "APPROVED",
+        "likeCount": 12,
+        "createTime": "2026-05-01T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+#### 5.7.7 获取用户点赞列表
+
+**GET** `/api/v1/users/{username}/likes`
+
+获取用户点赞历史。
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明       |
+| :------- | :----- | :--- | :--------- |
+| username | string | 是   | 用户名     |
+
+**Query 参数**
+| 参数名  | 类型   | 必填 | 说明         |
+| :------ | :----- | :--- | :----------- |
+| page    | number | 否   | 页码，默认 1 |
+| size    | number | 否   | 每页条数，默认 20 |
+
+**权限**：需要有效 Token 认证，且只能访问自己的点赞列表。
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 30,
+    "page": 1,
+    "size": 20,
+    "items": [
+      {
+        "objectId": "like_001",
+        "targetType": "ARTIFACT",
+        "targetId": "artifact_001",
+        "createTime": "2026-05-01T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+### 5.8 数据一致性检查（选做）
 
 **POST** `/api/v1/data/consistency-check`
 
