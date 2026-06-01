@@ -56,6 +56,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import com.platform.admin.modules.artifact.vo.ArtifactSearchItemVO;
+import com.platform.admin.modules.artifact.vo.ArtifactSearchResultVO;
+
 @Service
 public class ArtifactServiceImpl implements ArtifactService {
     private static final Logger log = LoggerFactory.getLogger(ArtifactServiceImpl.class);
@@ -120,6 +123,26 @@ public class ArtifactServiceImpl implements ArtifactService {
         ArtifactEntity entity = getNotDeletedById(objectId);
         log.info("event=data_relic_detail_view objectId={}", objectId);
         return RelicAssembler.toVO(entity);
+    }
+
+    @Override
+    public ArtifactSearchResultVO searchArtifacts(String q, long page, long size) {
+        String keyword = q == null ? "" : q.trim();
+
+        if (!StringUtils.hasText(keyword)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "参数错误：q 不能为空");
+        }
+
+        long safePage = page <= 0 ? DEFAULT_PAGE : page;
+        long safeSize = size <= 0 ? 20L : Math.min(size, MAX_PAGE_SIZE);
+        long offset = (safePage - 1) * safeSize;
+
+        long total = artifactMapper.countSearchArtifacts(keyword);
+        List<ArtifactSearchItemVO> items = total == 0
+                ? List.of()
+                : artifactMapper.searchArtifacts(keyword, offset, safeSize);
+
+        return new ArtifactSearchResultVO(total, safePage, safeSize, items);
     }
 
     @Override

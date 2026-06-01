@@ -36,6 +36,15 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.platform.admin.modules.interaction.dto.FavoriteCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupUpdateRequest;
+import com.platform.admin.modules.interaction.entity.UserFavoriteGroupEntity;
+import com.platform.admin.modules.interaction.mapper.UserFavoriteGroupMapper;
+import com.platform.admin.modules.interaction.vo.FavoriteActionVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupSummaryVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupVO;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -49,6 +58,7 @@ public class InteractionServiceImpl implements InteractionService {
     private final CommentLikeMapper commentLikeMapper;
     private final ArtifactLikeMapper artifactLikeMapper;
     private final UserFavoriteMapper userFavoriteMapper;
+    private final UserFavoriteGroupMapper userFavoriteGroupMapper;
     private final UserBrowseHistoryMapper browseHistoryMapper;
     private final ArtifactMapper artifactMapper;
     private final UserMapper userMapper;
@@ -57,19 +67,21 @@ public class InteractionServiceImpl implements InteractionService {
     private final SecurityUtil securityUtil;
 
     public InteractionServiceImpl(UgcCommentMapper commentMapper,
-                                  CommentLikeMapper commentLikeMapper,
-                                  ArtifactLikeMapper artifactLikeMapper,
-                                  UserFavoriteMapper userFavoriteMapper,
-                                  UserBrowseHistoryMapper browseHistoryMapper,
-                                  ArtifactMapper artifactMapper,
-                                  UserMapper userMapper,
-                                  SensitiveWordService sensitiveWordService,
-                                  ContentAuditMapper contentAuditMapper,
-                                  SecurityUtil securityUtil) {
+                                CommentLikeMapper commentLikeMapper,
+                                ArtifactLikeMapper artifactLikeMapper,
+                                UserFavoriteMapper userFavoriteMapper,
+                                UserFavoriteGroupMapper userFavoriteGroupMapper,
+                                UserBrowseHistoryMapper browseHistoryMapper,
+                                ArtifactMapper artifactMapper,
+                                UserMapper userMapper,
+                                SensitiveWordService sensitiveWordService,
+                                ContentAuditMapper contentAuditMapper,
+                                SecurityUtil securityUtil) {
         this.commentMapper = commentMapper;
         this.commentLikeMapper = commentLikeMapper;
         this.artifactLikeMapper = artifactLikeMapper;
         this.userFavoriteMapper = userFavoriteMapper;
+        this.userFavoriteGroupMapper = userFavoriteGroupMapper;
         this.browseHistoryMapper = browseHistoryMapper;
         this.artifactMapper = artifactMapper;
         this.userMapper = userMapper;
@@ -211,6 +223,135 @@ public class InteractionServiceImpl implements InteractionService {
     }
 
     @Override
+public List<FavoriteGroupVO> listFavoriteGroups(String username) {
+    User user = requirePathUser(username);
+    ensureDefaultFavoriteGroup(user.getObjectId());
+    return userFavoriteGroupMapper.selectGroups(user.getObjectId());
+}
+
+@Override
+@Transactional
+public FavoriteGroupVO createFavoriteGroup(String username, FavoriteGroupCreateRequest request) {
+    User user = requirePathUser(username);
+    String groupName = normalizeGroupName(request.getGroupName());
+
+    UserFavoriteGroupEntity group = new UserFavoriteGroupEntity();
+    group.setObjectId(UUID.randomUUID().toString());
+    group.setUserId(user.getObjectId());
+    group.setGroupName(groupName);
+    group.setCreateTime(LocalDateTime.now());
+
+    try {
+        userFavoriteGroupMapper.insert(group);
+    } catch (DuplicateKeyException ignored) {
+        // 重复创建时保持幂等。
+    }
+
+    FavoriteGroupVO vo = new FavoriteGroupVO();
+    vo.setGroupName(groupName);
+    vo.setCreateTime(group.getCreateTime());
+    return vo;
+}
+
+@Override
+@Transactional
+public FavoriteActionVO deleteFavoriteGroup(String username, String groupName) {
+    User user = requirePathUser(username);
+    String normalized = normalizeGroupName(groupName);
+
+    if ("default".equals(normalized)) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "默认收藏夹不能删除");
+    }
+
+    userFavoriteMapper.delete(new LambdaQueryWrapper<UserFavoriteEntity>()
+            .eq(UserFavoriteEntity::getUserId, user.getObjectId())
+            .eq(UserFavoriteEntity::getGroupName, normalized));
+
+    userFavoriteGroupMapper.delete(new LambdaQueryWrapper<UserFavoriteGroupEntity>()
+            .eq(UserFavoriteGroupEntity::getUserId, user.getObjectId())
+            .eq(UserFavoriteGroupEntity::getGroupName, normalized));
+
+    return new FavoriteActionVO(null, normalized, false);
+}
+
+@Override
+public List<FavoriteGroupSummaryVO> listFavoriteGroupSummary(String username) {
+    User user = requirePathUser(username);
+    ensureDefaultFavoriteGroup(user.getObjectId());
+    return userFavoriteGroupMapper.selectGroupSummary(user.getObjectId());
+}
+
+@Override
+@Transactional
+public FavoriteActionVO addFavorite(String username, FavoriteCreateRequest request) {
+    User user = requirePathUser(username);
+    ensureArtifactExists(request.getArtifactId());
+
+    String groupName = normalizeGroupName(request.getGroupName());
+    ensureFavoriteGroup(user.getObjectId(), groupName);
+
+    UserFavoriteEntity old = userFavoriteMapper.selectOne(new LambdaQueryWrapper<UserFavoriteEntity>()
+            .eq(UserFavoriteEntity::getUserId, user.getObjectId())
+            .eq(UserFavoriteEntity::getArtifactId, request.getArtifactId()));
+
+    if (old != null) {
+        old.setGroupName(groupName);
+        userFavoriteMapper.updateById(old);
+        return new FavoriteActionVO(request.getArtifactId(), groupName, true);
+    }
+
+    UserFavoriteEntity favorite = new UserFavoriteEntity();
+    favorite.setObjectId(UUID.randomUUID().toString());
+    favorite.setUserId(user.getObjectId());
+    favorite.setArtifactId(request.getArtifactId());
+    favorite.setGroupName(groupName);
+    favorite.setCreateTime(LocalDateTime.now());
+
+    try {
+        userFavoriteMapper.insert(favorite);
+    } catch (DuplicateKeyException ignored) {
+        // 并发重复收藏时保持幂等。
+    }
+
+    return new FavoriteActionVO(request.getArtifactId(), groupName, true);
+}
+
+@Override
+@Transactional
+public FavoriteActionVO updateFavoriteGroup(String username, String artifactId, FavoriteGroupUpdateRequest request) {
+    User user = requirePathUser(username);
+    ensureArtifactExists(artifactId);
+
+    String groupName = normalizeGroupName(request.getGroupName());
+    ensureFavoriteGroup(user.getObjectId(), groupName);
+
+    UserFavoriteEntity favorite = userFavoriteMapper.selectOne(new LambdaQueryWrapper<UserFavoriteEntity>()
+            .eq(UserFavoriteEntity::getUserId, user.getObjectId())
+            .eq(UserFavoriteEntity::getArtifactId, artifactId));
+
+    if (favorite == null) {
+        throw new BusinessException(ErrorCode.NOT_FOUND, "收藏记录不存在");
+    }
+
+    favorite.setGroupName(groupName);
+    userFavoriteMapper.updateById(favorite);
+
+    return new FavoriteActionVO(artifactId, groupName, true);
+}
+
+@Override
+@Transactional
+public FavoriteActionVO deleteFavorite(String username, String artifactId) {
+    User user = requirePathUser(username);
+
+    userFavoriteMapper.delete(new LambdaQueryWrapper<UserFavoriteEntity>()
+            .eq(UserFavoriteEntity::getUserId, user.getObjectId())
+            .eq(UserFavoriteEntity::getArtifactId, artifactId));
+
+    return new FavoriteActionVO(artifactId, null, false);
+}
+
+    @Override
     public ItemsPageVO<UserBrowseHistoryVO> pageUserHistory(String username, long page, long size) {
         User user = requirePathUser(username);
         long safePage = Math.max(page, 1);
@@ -315,4 +456,40 @@ public class InteractionServiceImpl implements InteractionService {
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }
+
+    private void ensureDefaultFavoriteGroup(String userId) {
+    ensureFavoriteGroup(userId, "default");
+}
+
+private void ensureFavoriteGroup(String userId, String groupName) {
+    String normalized = normalizeGroupName(groupName);
+
+    long count = userFavoriteGroupMapper.selectCount(new LambdaQueryWrapper<UserFavoriteGroupEntity>()
+            .eq(UserFavoriteGroupEntity::getUserId, userId)
+            .eq(UserFavoriteGroupEntity::getGroupName, normalized));
+
+    if (count > 0) {
+        return;
+    }
+
+    UserFavoriteGroupEntity group = new UserFavoriteGroupEntity();
+    group.setObjectId(UUID.randomUUID().toString());
+    group.setUserId(userId);
+    group.setGroupName(normalized);
+    group.setCreateTime(LocalDateTime.now());
+
+    try {
+        userFavoriteGroupMapper.insert(group);
+    } catch (DuplicateKeyException ignored) {
+        // 并发创建同名收藏夹时保持幂等。
+    }
+}
+
+private String normalizeGroupName(String groupName) {
+    if (groupName == null || groupName.isBlank()) {
+        return "default";
+    }
+    return groupName.trim();
+}
+
 }
