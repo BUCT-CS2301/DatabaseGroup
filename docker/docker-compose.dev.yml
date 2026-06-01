@@ -12,7 +12,9 @@ services:
       - "3306:3306"
     volumes:
       - dev_mysql_data:/var/lib/mysql
-      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./mysql/artifact_image.sql:/docker-entrypoint-initdb.d/02-artifact_image.sql
+      - ./mysql/interaction_tables.sql:/docker-entrypoint-initdb.d/03-interaction_tables.sql
     networks:
       - dev-net
 

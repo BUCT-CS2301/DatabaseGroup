@@ -1,7 +1,11 @@
-# dev：未接登录时可调用 GET /api/v1/auth/mock-token 获取联调 JWT（仅 profile=dev 时注册）
+# dev：未接登录时可调用 GET /api/v1/auth/mock-token 获取联调 JWT（app.auth.mock-token.enabled=true 时注册）
 app:
+  auth:
+    mock-token:
+      enabled: true
+    trust-mock-token-claims: true
   relics:
-    # 本地联调用对外基址，与 image_path 拼接为完整 image_url（生产环境勿写死域名，用各环境配置覆盖）
+    # 本地联调用对外基址，与 artifact_image.file_name 拼接为完整图片 URL
     image-public-base-url: "http://localhost:8080"
 spring:
   datasource:

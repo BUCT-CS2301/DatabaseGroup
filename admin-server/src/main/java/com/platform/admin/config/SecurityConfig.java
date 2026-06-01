@@ -28,9 +28,10 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
     private final SecurityLogWriter securityLogWriter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          ObjectMapper objectMapper,
-                          SecurityLogWriter securityLogWriter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            ObjectMapper objectMapper,
+            SecurityLogWriter securityLogWriter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.objectMapper = objectMapper;
         this.securityLogWriter = securityLogWriter;
