@@ -29,6 +29,12 @@ public class UpdateRelicRequest {
     @Size(max = 1000, message = "detailUrl长度不能超过1000")
     private String detailUrl;
 
+    @Size(max = 1000, message = "imageUrl长度不能超过1000")
+    private String imageUrl;
+
+    @Size(max = 500, message = "imagePath长度不能超过500")
+    private String imagePath;
+
     @Size(max = 500, message = "creditLine长度不能超过500")
     private String creditLine;
 
