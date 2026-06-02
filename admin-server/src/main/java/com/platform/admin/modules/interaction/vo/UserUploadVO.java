@@ -5,15 +5,13 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class UserBrowseHistoryVO {
+public class UserUploadVO {
 
-    private String objectId;
+    private String uploadId;
 
     private String artifactId;
 
     private String title;
-
-    private String artifactTitle;
 
     private String imageUrl;
 
@@ -21,5 +19,11 @@ public class UserBrowseHistoryVO {
 
     private String museum;
 
-    private LocalDateTime browseTime;
+    private String status;
+
+    private LocalDateTime createTime;
+
+    private LocalDateTime reviewTime;
+
+    private String reviewComment;
 }

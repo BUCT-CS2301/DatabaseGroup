@@ -90,3 +90,21 @@ SET @sql_user_bio = (
 PREPARE stmt_user_bio FROM @sql_user_bio;
 EXECUTE stmt_user_bio;
 DEALLOCATE PREPARE stmt_user_bio;
+
+-- =========================================================
+-- Mobile user upload photos
+-- Used by artifact detail page upload and my uploads page.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS user_artifact_upload (
+    object_id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    artifact_id VARCHAR(36) NOT NULL,
+    image_path VARCHAR(1000) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    review_time DATETIME NULL,
+    review_comment VARCHAR(500) NULL,
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user_upload_user_time (user_id, create_time),
+    KEY idx_user_upload_artifact (artifact_id),
+    KEY idx_user_upload_status (status)
+);

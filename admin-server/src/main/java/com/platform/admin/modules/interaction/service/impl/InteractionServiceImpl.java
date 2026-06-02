@@ -368,12 +368,19 @@ public FavoriteActionVO deleteFavorite(String username, String artifactId) {
     public UserBrowseHistoryVO addUserHistory(String username, BrowseHistoryCreateRequest request) {
         User user = requirePathUser(username);
         ensureArtifactExists(request.getArtifactId());
+
+        browseHistoryMapper.delete(new LambdaQueryWrapper<UserBrowseHistoryEntity>()
+                .eq(UserBrowseHistoryEntity::getUserId, user.getObjectId())
+                .eq(UserBrowseHistoryEntity::getArtifactId, request.getArtifactId()));
+
         UserBrowseHistoryEntity history = new UserBrowseHistoryEntity();
         history.setObjectId(UUID.randomUUID().toString());
         history.setUserId(user.getObjectId());
         history.setArtifactId(request.getArtifactId());
         history.setBrowseTime(LocalDateTime.now());
+
         browseHistoryMapper.insert(history);
+
         return browseHistoryMapper.selectUserHistory(user.getObjectId(), 0, 1).stream()
                 .filter(item -> history.getObjectId().equals(item.getObjectId()))
                 .findFirst()
