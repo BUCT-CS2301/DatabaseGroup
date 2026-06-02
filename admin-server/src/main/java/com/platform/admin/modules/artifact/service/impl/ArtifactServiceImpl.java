@@ -1,11 +1,8 @@
 package com.platform.admin.modules.artifact.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.admin.common.BusinessException;
 import com.platform.admin.common.ErrorCode;
-import com.platform.admin.common.PageResult;
 import com.platform.admin.common.log.OperationLogWriter;
 import com.platform.admin.common.util.ClientIpUtils;
 import com.platform.admin.config.RelicAutoImageProperties;
@@ -19,13 +16,19 @@ import com.platform.admin.modules.artifact.support.RelicCsvImportParser;
 import com.platform.admin.modules.artifact.support.RelicImageFormat;
 import com.platform.admin.modules.artifact.support.RelicImageStorage;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
+import com.platform.admin.modules.artifact.vo.ArtifactDetailVO;
+import com.platform.admin.modules.artifact.vo.ArtifactListItemVO;
+import com.platform.admin.modules.artifact.vo.ArtifactPageVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
+import com.platform.admin.modules.museum.entity.MuseumEntity;
+import com.platform.admin.modules.museum.mapper.MuseumMapper;
 import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.SecurityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +58,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 @Service
 public class ArtifactServiceImpl implements ArtifactService {
@@ -64,10 +68,16 @@ public class ArtifactServiceImpl implements ArtifactService {
     private static final long MAX_PAGE_SIZE = 100L;
     private static final long MAX_RELIC_IMAGE_BYTES = 10L * 1024 * 1024;
     private static final String MODULE_RELIC = "RELIC";
+    private static final String UNKNOWN_MUSEUM = "未知馆藏";
+    private static final String DEFAULT_ACCESSION_NUMBER = "-";
+    private static final String DEFAULT_LOCATION = "-";
+    private static final List<String> SUPPORTED_SORTS = List.of("hot", "name", "period");
+    private static volatile boolean popularityTableMissingLogged = false;
 
     private final SecurityUtil securityUtil;
     private final OperationLogWriter operationLogWriter;
     private final ArtifactMapper artifactMapper;
+    private final MuseumMapper museumMapper;
     private final RelicImageStorage relicImageStorage;
     private final RelicAutoImageProperties relicAutoImageProperties;
     private final RelicCsvImportParser relicCsvImportParser;
@@ -77,6 +87,7 @@ public class ArtifactServiceImpl implements ArtifactService {
             SecurityUtil securityUtil,
             OperationLogWriter operationLogWriter,
             ArtifactMapper artifactMapper,
+            MuseumMapper museumMapper,
             RelicImageStorage relicImageStorage,
             RelicAutoImageProperties relicAutoImageProperties,
             RelicCsvImportParser relicCsvImportParser,
@@ -84,6 +95,7 @@ public class ArtifactServiceImpl implements ArtifactService {
         this.securityUtil = securityUtil;
         this.operationLogWriter = operationLogWriter;
         this.artifactMapper = artifactMapper;
+        this.museumMapper = museumMapper;
         this.relicImageStorage = relicImageStorage;
         this.relicAutoImageProperties = relicAutoImageProperties;
         this.relicCsvImportParser = relicCsvImportParser;
@@ -91,35 +103,50 @@ public class ArtifactServiceImpl implements ArtifactService {
     }
 
     @Override
-    public PageResult<RelicVO> pageRelics(long page, long pageSize, String keyword, String museumId) {
+    public ArtifactPageVO pageRelics(
+            long page, long size, String keyword, String period, String type, String material, String museum, String sort) {
         long safePage = page <= 0 ? DEFAULT_PAGE : page;
-        long safePageSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
+        long safeSize = size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
+        validateSort(sort);
 
-        LambdaQueryWrapper<ArtifactEntity> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ArtifactEntity::getIsDeleted, 0);
-        if (StringUtils.hasText(keyword)) {
-            wrapper.and(w -> w.like(ArtifactEntity::getTitle, keyword)
-                    .or().like(ArtifactEntity::getAccessionNumber, keyword));
-        }
-        if (StringUtils.hasText(museumId)) {
-            wrapper.eq(ArtifactEntity::getMuseumId, museumId);
-        }
-        wrapper.orderByDesc(ArtifactEntity::getCreateTime);
+        long offset = (safePage - 1) * safeSize;
+        List<ArtifactEntity> entities = artifactMapper.selectPublicPage(
+                offset, safeSize, keyword, period, type, material, museum, sort);
+        long total = artifactMapper.countPublicPage(keyword, period, type, material, museum);
 
-        Page<ArtifactEntity> mpPage = new Page<>(safePage, safePageSize);
-        Page<ArtifactEntity> result = artifactMapper.selectPage(mpPage, wrapper);
-
-        List<RelicVO> records = result.getRecords().stream().map(RelicAssembler::toVO).toList();
-        log.info("event=data_relic_list_view page={} pageSize={} hasKeyword={} hasMuseumFilter={}",
-                safePage, safePageSize, StringUtils.hasText(keyword), StringUtils.hasText(museumId));
-        return new PageResult<>(records, result.getTotal(), safePage, safePageSize);
+        List<ArtifactListItemVO> items = entities.stream().map(this::toListItemVO).toList();
+        return ArtifactPageVO.builder()
+                .items(items)
+                .total(total)
+                .page(safePage)
+                .size(safeSize)
+                .build();
     }
 
     @Override
-    public RelicVO getRelicById(String objectId) {
+    public ArtifactDetailVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
-        log.info("event=data_relic_detail_view objectId={}", objectId);
-        return RelicAssembler.toVO(entity);
+        MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
+        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
+
+        return ArtifactDetailVO.builder()
+                .objectId(entity.getObjectId())
+                .title(entity.getTitle())
+                .period(entity.getPeriod())
+                .type(entity.getType())
+                .material(entity.getMaterial())
+                .description(entity.getDescription())
+                .dimensions(entity.getDimensions())
+                .museum(resolveMuseumName(museumEntity))
+                .location(resolveLocation(museumEntity))
+                .detailUrl(entity.getDetailUrl())
+                .imageUrl(imageUrl)
+                .imageUrls(imageUrls)
+                .creditLine(entity.getCreditLine())
+                .accessionNumber(resolveAccessionNumber(entity.getAccessionNumber(), entity.getObjectId()))
+                .popularity(calculatePopularity(entity.getObjectId()))
+                .build();
     }
 
     @Override
@@ -405,6 +432,93 @@ public class ArtifactServiceImpl implements ArtifactService {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         HttpServletRequest request = attributes == null ? null : attributes.getRequest();
         return ClientIpUtils.resolve(request);
+    }
+
+    private ArtifactListItemVO toListItemVO(ArtifactEntity entity) {
+        MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
+        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
+        return ArtifactListItemVO.builder()
+                .objectId(entity.getObjectId())
+                .title(entity.getTitle())
+                .period(entity.getPeriod())
+                .type(entity.getType())
+                .material(entity.getMaterial())
+                .museum(resolveMuseumName(museumEntity))
+                .imageUrl(imageUrl)
+                .popularity(calculatePopularity(entity.getObjectId()))
+                .build();
+    }
+
+    private MuseumEntity loadMuseum(String museumId) {
+        if (!StringUtils.hasText(museumId)) {
+            return null;
+        }
+        return museumMapper.selectById(museumId);
+    }
+
+    private String resolveMuseumName(MuseumEntity museumEntity) {
+        if (museumEntity == null || !StringUtils.hasText(museumEntity.getName())) {
+            log.warn("event=artifact_museum_missing");
+            return UNKNOWN_MUSEUM;
+        }
+        return museumEntity.getName();
+    }
+
+    private String resolveLocation(MuseumEntity museumEntity) {
+        if (museumEntity == null || !StringUtils.hasText(museumEntity.getLocation())) {
+            return DEFAULT_LOCATION;
+        }
+        return museumEntity.getLocation();
+    }
+
+    private String resolveAccessionNumber(String accessionNumber, String objectId) {
+        if (StringUtils.hasText(accessionNumber)) {
+            return accessionNumber;
+        }
+        log.info("event=artifact_accession_number_fallback objectId={}", objectId);
+        return DEFAULT_ACCESSION_NUMBER;
+    }
+
+    private List<String> resolveImageUrls(String artifactId) {
+        List<String> fileNames = artifactMapper.selectImageFileNamesByArtifactId(artifactId);
+        if (fileNames == null || fileNames.isEmpty()) {
+            log.info("event=artifact_list_image_fallback artifactId={}", artifactId);
+            return List.of(resolveDefaultImageUrl());
+        }
+        return fileNames.stream()
+                .map(fileName -> buildRelicImageUrl("relics-images/" + fileName))
+                .collect(Collectors.toList());
+    }
+
+    private String resolveDefaultImageUrl() {
+        return buildRelicImageUrl("relics-images/default-placeholder.jpg");
+    }
+
+    private Integer calculatePopularity(String artifactId) {
+        try {
+            int viewCount = Math.max(artifactMapper.countViewsByArtifactId(artifactId), 0);
+            int favoriteCount = Math.max(artifactMapper.countFavoritesByArtifactId(artifactId), 0);
+            int value = (int) Math.floor(viewCount * 0.6 + favoriteCount * 0.4);
+            return Math.max(value, 0);
+        } catch (BadSqlGrammarException ex) {
+            // 兼容未初始化 interaction 表的环境，按 PRD 降级策略返回 0。
+            if (!popularityTableMissingLogged) {
+                popularityTableMissingLogged = true;
+                log.warn("event=artifact_hot_calculation_fallback fallback_reason=missing_interaction_tables");
+            }
+            return 0;
+        }
+    }
+
+    private void validateSort(String sort) {
+        if (!StringUtils.hasText(sort)) {
+            return;
+        }
+        if (SUPPORTED_SORTS.contains(sort)) {
+            return;
+        }
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "sort must be one of [hot,name,period]");
     }
 
     private ArtifactEntity getNotDeletedById(String objectId) {

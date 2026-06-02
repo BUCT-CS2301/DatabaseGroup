@@ -53,7 +53,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/logs/operation", "/api/v1/logs/operation/**",
                         "/api/v1/logs/system", "/api/v1/logs/security").hasAuthority(LogPermissions.READ)
                 .requestMatchers("/api/v1/logs/**").authenticated()
-                .requestMatchers("/api/v1/data/relics/**", "/api/v1/data/museums/**").authenticated()
+                .requestMatchers("/api/v1/data/museums/**", "/api/v1/artifacts/**").authenticated()
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )

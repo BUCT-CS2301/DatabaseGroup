@@ -1,10 +1,11 @@
 package com.platform.admin.modules.artifact.controller;
 
-import com.platform.admin.common.PageResult;
 import com.platform.admin.common.Result;
 import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.service.ArtifactService;
+import com.platform.admin.modules.artifact.vo.ArtifactDetailVO;
+import com.platform.admin.modules.artifact.vo.ArtifactPageVO;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
@@ -29,7 +30,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Validated
 @RestController
-@RequestMapping("/api/v1/data/relics")
+@RequestMapping("/api/v1/artifacts")
 public class RelicController {
 
     private static final Logger log = LoggerFactory.getLogger(RelicController.class);
@@ -41,17 +42,21 @@ public class RelicController {
     }
 
     @GetMapping
-    public Result<PageResult<RelicVO>> pageRelics(
+    public Result<ArtifactPageVO> pageRelics(
             @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "pageSize最小为1") Long pageSize,
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size最小为1") Long size,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String museumId
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String material,
+            @RequestParam(required = false) String museum,
+            @RequestParam(required = false) String sort
     ) {
-        return Result.success(artifactService.pageRelics(page, pageSize, keyword, museumId));
+        return Result.success(artifactService.pageRelics(page, size, keyword, period, type, material, museum, sort));
     }
 
     @GetMapping("/{objectId}")
-    public Result<RelicVO> getRelic(@PathVariable String objectId) {
+    public Result<ArtifactDetailVO> getRelic(@PathVariable String objectId) {
         return Result.success(artifactService.getRelicById(objectId));
     }
 
