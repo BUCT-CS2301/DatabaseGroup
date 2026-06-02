@@ -4,6 +4,8 @@ import com.platform.admin.modules.log.entity.SystemLogEntity;
 import com.platform.admin.modules.log.mapper.SystemLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -31,9 +33,15 @@ public class SystemLogWriter {
         return thread;
     });
     private final ArrayBlockingQueue<SystemLogEntity> queue = new ArrayBlockingQueue<>(1000);
+    private volatile boolean running = false;
 
     public SystemLogWriter(SystemLogMapper systemLogMapper) {
         this.systemLogMapper = systemLogMapper;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        running = true;
         executor.submit(this::drainQueue);
     }
 

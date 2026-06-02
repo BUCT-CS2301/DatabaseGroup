@@ -23,14 +23,26 @@
           <el-card shadow="never" class="filter-card">
             <el-form :inline="true" :model="filterForm">
               <el-form-item label="备份类型">
-                <el-select v-model="filterForm.type" placeholder="全部类型" clearable style="width: 150px;">
+                <el-select
+                  key="filter-backup-type"
+                  v-model="filterForm.type"
+                  placeholder="全部类型"
+                  clearable
+                  style="width: 150px;"
+                >
                   <el-option label="全量备份" value="full" />
                   <el-option label="增量备份" value="incremental" />
                   <el-option label="配置备份" value="config" />
                 </el-select>
               </el-form-item>
               <el-form-item label="状态">
-                <el-select v-model="filterForm.status" placeholder="全部状态" clearable style="width: 150px;">
+                <el-select
+                  key="filter-backup-status"
+                  v-model="filterForm.status"
+                  placeholder="全部状态"
+                  clearable
+                  style="width: 150px;"
+                >
                   <el-option label="成功" value="success" />
                   <el-option label="进行中" value="running" />
                   <el-option label="失败" value="failed" />
@@ -195,13 +207,23 @@
     </el-tabs>
 
     <!-- 创建备份对话框 -->
-    <el-dialog v-model="createDialogVisible" title="创建备份" width="500px">
+    <el-dialog
+      v-model="createDialogVisible"
+      title="创建备份"
+      width="500px"
+      destroy-on-close
+    >
       <el-form :model="backupForm" label-width="100px">
         <el-form-item label="备份名称">
           <el-input v-model="backupForm.name" placeholder="请输入备份名称" />
         </el-form-item>
         <el-form-item label="备份类型">
-          <el-select v-model="backupForm.type" placeholder="请选择备份类型" style="width: 100%;">
+          <el-select
+            key="dialog-backup-type"
+            v-model="backupForm.type"
+            placeholder="请选择备份类型"
+            style="width: 100%;"
+          >
             <el-option label="全量备份" value="full" />
             <el-option label="增量备份" value="incremental" />
             <el-option label="配置备份" value="config" />
@@ -218,20 +240,35 @@
     </el-dialog>
 
     <!-- 创建/编辑定时任务对话框 -->
-    <el-dialog v-model="taskDialogVisible" :title="editingTask ? '编辑定时任务' : '创建定时任务'" width="500px">
+    <el-dialog
+      v-model="taskDialogVisible"
+      :title="editingTask ? '编辑定时任务' : '创建定时任务'"
+      width="500px"
+      destroy-on-close
+    >
       <el-form :model="taskForm" label-width="100px">
         <el-form-item label="任务名称">
           <el-input v-model="taskForm.name" placeholder="请输入任务名称" />
         </el-form-item>
         <el-form-item label="备份类型">
-          <el-select v-model="taskForm.type" placeholder="请选择备份类型" style="width: 100%;">
+          <el-select
+            key="dialog-task-type"
+            v-model="taskForm.type"
+            placeholder="请选择备份类型"
+            style="width: 100%;"
+          >
             <el-option label="全量备份" value="full" />
             <el-option label="增量备份" value="incremental" />
             <el-option label="配置备份" value="config" />
           </el-select>
         </el-form-item>
         <el-form-item label="执行时间">
-          <el-select v-model="taskForm.cron" placeholder="请选择执行时间" style="width: 100%;">
+          <el-select
+            key="dialog-task-cron"
+            v-model="taskForm.cron"
+            placeholder="请选择执行时间"
+            style="width: 100%;"
+          >
             <el-option label="每天凌晨1点" value="0 0 1 * * ?" />
             <el-option label="每天凌晨2点" value="0 0 2 * * ?" />
             <el-option label="每天凌晨3点" value="0 0 3 * * ?" />
@@ -257,7 +294,12 @@
     </el-dialog>
 
     <!-- 恢复确认对话框 -->
-    <el-dialog v-model="restoreDialogVisible" title="数据恢复确认" width="450px">
+    <el-dialog
+      v-model="restoreDialogVisible"
+      title="数据恢复确认"
+      width="450px"
+      destroy-on-close
+    >
       <div class="restore-warning">
         <el-icon class="warning-icon"><Warning /></el-icon>
         <p>您正在尝试从备份恢复数据，此操作将覆盖当前数据库中的所有数据！</p>

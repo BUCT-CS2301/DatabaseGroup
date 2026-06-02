@@ -5,6 +5,7 @@ import com.platform.admin.common.Result;
 import com.platform.admin.modules.log.dto.LogExportRequest;
 import com.platform.admin.modules.log.service.LogService;
 import com.platform.admin.modules.log.vo.LogExportVO;
+import com.platform.admin.modules.log.vo.LogStatsVO;
 import com.platform.admin.modules.log.vo.OperationLogDetailVO;
 import com.platform.admin.modules.log.vo.OperationLogVO;
 import com.platform.admin.modules.log.vo.SecurityLogVO;
@@ -76,6 +77,11 @@ public class LogController {
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "pageSize最小为1") @Max(value = 100, message = "pageSize最大为100") long pageSize
     ) {
         return Result.success(logService.pageSecurityLogs(page, pageSize));
+    }
+
+    @GetMapping("/stats")
+    public Result<LogStatsVO> getStats() {
+        return Result.success(logService.getStats());
     }
 
     @PostMapping("/export")

@@ -87,20 +87,30 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   const requiresAuth = to.meta.requiresAuth
 
+  console.log('Router guard: navigating from', from.path, 'to', to.path)
+  console.log('Router guard: user roles', userStore.roles)
+  console.log('Router guard: requiresAuth', requiresAuth)
+  console.log('Router guard: allowedRoles', to.meta.roles)
+
   if (to.path === '/' && !userStore.token) {
+    console.log('Router guard: redirect to /login (no token)')
     next('/login')
     return
   }
 
   if (requiresAuth && !userStore.token) {
+    console.log('Router guard: redirect to /login (auth required)')
     next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
     return
   }
 
   if (userStore.token && userStore.roles.length === 0) {
+    console.log('Router guard: fetching user info...')
     try {
       await userStore.fetchCurrentUser()
+      console.log('Router guard: user info fetched, roles:', userStore.roles)
     } catch (error) {
+      console.log('Router guard: fetch user failed, redirect to login')
       await userStore.logout()
       next('/login')
       return
@@ -108,16 +118,19 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.path === '/login' && userStore.token) {
+    console.log('Router guard: already logged in, redirect to', userStore.defaultRoute)
     next(userStore.defaultRoute)
     return
   }
 
   const allowedRoles = to.meta.roles as string[] | undefined
   if (requiresAuth && !userStore.hasAnyRole(allowedRoles)) {
+    console.log('Router guard: no permission, redirect to', userStore.defaultRoute)
     next(userStore.defaultRoute)
     return
   }
 
+  console.log('Router guard: proceed to', to.path)
   next()
 })
 

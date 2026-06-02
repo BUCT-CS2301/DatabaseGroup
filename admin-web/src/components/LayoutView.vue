@@ -2,13 +2,17 @@
   <el-container class="layout">
     <el-aside width="200px" class="sidebar">
       <el-menu
-        router
         :default-active="route.path"
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409EFF"
+        router
       >
-        <el-menu-item v-for="item in visibleMenus" :key="item.path" :index="item.path">
+        <el-menu-item 
+          v-for="item in visibleMenus" 
+          :key="item.path" 
+          :index="item.path"
+        >
           {{ item.title }}
         </el-menu-item>
       </el-menu>
