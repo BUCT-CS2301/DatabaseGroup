@@ -11,6 +11,14 @@ import com.platform.admin.modules.interaction.vo.UserCommentVO;
 import com.platform.admin.modules.interaction.vo.UserFavoriteVO;
 import com.platform.admin.modules.interaction.vo.UserLikeVO;
 
+import com.platform.admin.modules.interaction.dto.FavoriteCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupUpdateRequest;
+import com.platform.admin.modules.interaction.vo.FavoriteActionVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupSummaryVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupVO;
+import java.util.List;
+
 public interface InteractionService {
     ItemsPageVO<CommentVO> pageArtifactComments(String artifactId, long page, long size);
 
@@ -31,4 +39,18 @@ public interface InteractionService {
     ItemsPageVO<UserBrowseHistoryVO> pageUserHistory(String username, long page, long size);
 
     UserBrowseHistoryVO addUserHistory(String username, BrowseHistoryCreateRequest request);
+
+    List<FavoriteGroupVO> listFavoriteGroups(String username);
+
+    FavoriteGroupVO createFavoriteGroup(String username, FavoriteGroupCreateRequest request);
+
+    FavoriteActionVO deleteFavoriteGroup(String username, String groupName);
+
+    List<FavoriteGroupSummaryVO> listFavoriteGroupSummary(String username);
+
+    FavoriteActionVO addFavorite(String username, FavoriteCreateRequest request);
+
+    FavoriteActionVO updateFavoriteGroup(String username, String artifactId, FavoriteGroupUpdateRequest request);
+
+    FavoriteActionVO deleteFavorite(String username, String artifactId);
 }
