@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+﻿import request from '@/utils/request'
 
 export interface RelicObject {
   objectId: string
@@ -8,9 +8,12 @@ export interface RelicObject {
   material: string
   description: string
   dimensions: string
+  museum: string
   museumId: string
+  location: string
   detailUrl: string
   imageUrl: string
+  imageUrls: string[]
   imagePath: string
   creditLine: string
   accessionNumber: string
@@ -18,6 +21,7 @@ export interface RelicObject {
   createTime: string
   updateTime: string
   isDeleted: number
+  hot: number
 }
 
 export interface MuseumObject {
@@ -29,10 +33,10 @@ export interface MuseumObject {
 }
 
 export interface PageResult<T> {
-  records: T[]
+  items: T[]
   total: number
   page: number
-  pageSize: number
+  size: number
 }
 
 export interface CreateRelicRequest {
@@ -99,41 +103,42 @@ export interface RelatedArtifact {
 
 export async function getRelicList(params: {
   page?: number
-  pageSize?: number
+  size?: number
   keyword?: string
   period?: string
   type?: string
   material?: string
-  museumId?: string
+  museum?: string
+  sort?: 'hot' | 'name' | 'period'
 }): Promise<PageResult<RelicObject>> {
-  const res = await request.get('/v1/data/relics', { params })
+  const res = await request.get('/v1/artifacts', { params })
   return res.data
 }
 
 export async function getRelicDetail(objectId: string): Promise<RelicObject> {
-  const res = await request.get(`/v1/data/relics/${objectId}`)
+  const res = await request.get(`/v1/artifacts/${objectId}`)
   return res.data
 }
 
 export async function createRelic(data: CreateRelicRequest): Promise<RelicObject> {
-  const res = await request.post('/v1/data/relics', data)
+  const res = await request.post('/v1/artifacts', data)
   return res.data
 }
 
 export async function updateRelic(objectId: string, data: UpdateRelicRequest): Promise<RelicObject> {
-  const res = await request.put(`/v1/data/relics/${objectId}`, data)
+  const res = await request.put(`/v1/artifacts/${objectId}`, data)
   return res.data
 }
 
 export async function deleteRelic(objectId: string): Promise<{ objectId: string; isDeleted: number }> {
-  const res = await request.delete(`/v1/data/relics/${objectId}`)
+  const res = await request.delete(`/v1/artifacts/${objectId}`)
   return res.data
 }
 
 export async function uploadRelicImage(objectId: string, file: File): Promise<UploadImageResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await request.post(`/v1/data/relics/${objectId}/image`, formData, {
+  const res = await request.post(`/v1/artifacts/${objectId}/image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
   return res.data
@@ -142,7 +147,7 @@ export async function uploadRelicImage(objectId: string, file: File): Promise<Up
 export async function importCsv(file: File): Promise<ImportCsvResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await request.post('/v1/data/relics/import-csv', formData, {
+  const res = await request.post('/v1/artifacts/import-csv', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
   return res.data
@@ -150,9 +155,9 @@ export async function importCsv(file: File): Promise<ImportCsvResponse> {
 
 export async function exportCsv(params: {
   keyword?: string
-  museumId?: string
+  museum?: string
 }): Promise<Blob> {
-  const res = await request.get('/v1/data/relics/export-csv', {
+  const res = await request.get('/v1/artifacts/export-csv', {
     params,
     responseType: 'blob'
   })
@@ -161,7 +166,7 @@ export async function exportCsv(params: {
 
 export async function getMuseumList(params: {
   page?: number
-  pageSize?: number
+  size?: number
   keyword?: string
 }): Promise<PageResult<MuseumObject>> {
   const res = await request.get('/v1/data/museums', { params })
