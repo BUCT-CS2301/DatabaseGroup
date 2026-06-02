@@ -36,7 +36,7 @@ public class UserPrivacyController {
 
     @GetMapping("/{username}/privacy")
     public Result<UserPrivacySettingVO> getPrivacy(@PathVariable String username) {
-        User user = requireSelfUser(username);
+        User user = requireExistingUser(username);
         UserPrivacySettingEntity setting = getOrCreateSetting(user.getObjectId());
         return Result.success(toVO(setting));
     }
@@ -67,7 +67,7 @@ public class UserPrivacyController {
         return Result.success(toVO(setting));
     }
 
-    private User requireSelfUser(String username) {
+        private User requireExistingUser(String username) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, username)
                 .eq(User::getIsDeleted, 0));
@@ -75,6 +75,12 @@ public class UserPrivacyController {
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
         }
+
+        return user;
+    }
+
+        private User requireSelfUser(String username) {
+        User user = requireExistingUser(username);
 
         AuthUser currentUser = securityUtil.getCurrentUser();
         if (!user.getObjectId().equals(currentUser.objectId())) {
