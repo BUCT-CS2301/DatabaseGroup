@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS user_artifact_upload (
     KEY idx_user_upload_user_time (user_id, create_time),
     KEY idx_user_upload_artifact (artifact_id),
     KEY idx_user_upload_status (status)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 文物点赞表
 CREATE TABLE IF NOT EXISTS artifact_like (
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS artifact_like (
     KEY idx_artifact_like_user (user_id),
     KEY idx_artifact_like_artifact (artifact_id),
     KEY idx_artifact_like_time (create_time)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 浏览历史表
 CREATE TABLE IF NOT EXISTS user_browse_history (
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS user_browse_history (
     UNIQUE KEY uk_user_artifact_history (user_id, artifact_id),
     KEY idx_history_user_time (user_id, browse_time),
     KEY idx_history_artifact (artifact_id)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 评论点赞表
 CREATE TABLE IF NOT EXISTS comment_like (
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS comment_like (
     KEY idx_comment_like_user (user_id),
     KEY idx_comment_like_comment (comment_id),
     KEY idx_comment_like_time (create_time)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- =========================================================
 -- Add missing columns when tables already exist
@@ -228,22 +228,22 @@ DEALLOCATE PREPARE stmt_history_browse_time;
 -- =========================================================
 
 ALTER TABLE user_favorite
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE user_favorite_group
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE user_privacy_setting
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE user_artifact_upload
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE artifact_like
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE user_browse_history
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ALTER TABLE comment_like
-    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
