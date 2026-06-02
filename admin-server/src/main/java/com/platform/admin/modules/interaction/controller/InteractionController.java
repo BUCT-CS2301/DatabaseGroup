@@ -3,9 +3,15 @@ package com.platform.admin.modules.interaction.controller;
 import com.platform.admin.common.Result;
 import com.platform.admin.modules.interaction.dto.BrowseHistoryCreateRequest;
 import com.platform.admin.modules.interaction.dto.CommentCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupCreateRequest;
+import com.platform.admin.modules.interaction.dto.FavoriteGroupUpdateRequest;
 import com.platform.admin.modules.interaction.service.InteractionService;
 import com.platform.admin.modules.interaction.vo.CommentCreateVO;
 import com.platform.admin.modules.interaction.vo.CommentVO;
+import com.platform.admin.modules.interaction.vo.FavoriteActionVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupSummaryVO;
+import com.platform.admin.modules.interaction.vo.FavoriteGroupVO;
 import com.platform.admin.modules.interaction.vo.ItemsPageVO;
 import com.platform.admin.modules.interaction.vo.LikeVO;
 import com.platform.admin.modules.interaction.vo.UserBrowseHistoryVO;
@@ -19,15 +25,19 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @Validated
 @RestController
 @RequestMapping("/api/v1")
 public class InteractionController {
+
     private final InteractionService interactionService;
 
     public InteractionController(InteractionService interactionService) {
@@ -37,8 +47,8 @@ public class InteractionController {
     @GetMapping("/artifacts/{artifactId}/comments")
     public Result<ItemsPageVO<CommentVO>> pageArtifactComments(
             @PathVariable String artifactId,
-            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size最小为1") Long size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page min is 1") Long page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size min is 1") Long size) {
         return Result.success(interactionService.pageArtifactComments(artifactId, page, size));
     }
 
@@ -52,8 +62,8 @@ public class InteractionController {
     @GetMapping("/users/{username}/comments")
     public Result<ItemsPageVO<UserCommentVO>> pageUserComments(
             @PathVariable String username,
-            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size最小为1") Long size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page min is 1") Long page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size min is 1") Long size) {
         return Result.success(interactionService.pageUserComments(username, page, size));
     }
 
@@ -75,24 +85,70 @@ public class InteractionController {
     @GetMapping("/users/{username}/likes")
     public Result<ItemsPageVO<UserLikeVO>> pageUserLikes(
             @PathVariable String username,
-            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size最小为1") Long size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page min is 1") Long page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size min is 1") Long size) {
         return Result.success(interactionService.pageUserLikes(username, page, size));
+    }
+
+    @GetMapping("/users/{username}/favorite-groups")
+    public Result<List<FavoriteGroupVO>> listFavoriteGroups(@PathVariable String username) {
+        return Result.success(interactionService.listFavoriteGroups(username));
+    }
+
+    @PostMapping("/users/{username}/favorite-groups")
+    public Result<FavoriteGroupVO> createFavoriteGroup(
+            @PathVariable String username,
+            @RequestBody @Valid FavoriteGroupCreateRequest request) {
+        return Result.success(interactionService.createFavoriteGroup(username, request));
+    }
+
+    @DeleteMapping("/users/{username}/favorite-groups/{groupName}")
+    public Result<FavoriteActionVO> deleteFavoriteGroup(
+            @PathVariable String username,
+            @PathVariable String groupName) {
+        return Result.success(interactionService.deleteFavoriteGroup(username, groupName));
+    }
+
+    @GetMapping("/users/{username}/favorite-groups/summary")
+    public Result<List<FavoriteGroupSummaryVO>> listFavoriteGroupSummary(@PathVariable String username) {
+        return Result.success(interactionService.listFavoriteGroupSummary(username));
+    }
+
+    @PostMapping("/users/{username}/favorites")
+    public Result<FavoriteActionVO> addFavorite(
+            @PathVariable String username,
+            @RequestBody @Valid FavoriteCreateRequest request) {
+        return Result.success(interactionService.addFavorite(username, request));
+    }
+
+    @PutMapping("/users/{username}/favorites/{artifactId}/group")
+    public Result<FavoriteActionVO> updateFavoriteGroup(
+            @PathVariable String username,
+            @PathVariable String artifactId,
+            @RequestBody @Valid FavoriteGroupUpdateRequest request) {
+        return Result.success(interactionService.updateFavoriteGroup(username, artifactId, request));
+    }
+
+    @DeleteMapping("/users/{username}/favorites/{artifactId}")
+    public Result<FavoriteActionVO> deleteFavorite(
+            @PathVariable String username,
+            @PathVariable String artifactId) {
+        return Result.success(interactionService.deleteFavorite(username, artifactId));
     }
 
     @GetMapping("/users/{username}/favorites")
     public Result<ItemsPageVO<UserFavoriteVO>> pageUserFavorites(
             @PathVariable String username,
-            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size最小为1") Long size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page min is 1") Long page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size min is 1") Long size) {
         return Result.success(interactionService.pageUserFavorites(username, page, size));
     }
 
     @GetMapping("/users/{username}/history")
     public Result<ItemsPageVO<UserBrowseHistoryVO>> pageUserHistory(
             @PathVariable String username,
-            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page最小为1") Long page,
-            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size最小为1") Long size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page min is 1") Long page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size min is 1") Long size) {
         return Result.success(interactionService.pageUserHistory(username, page, size));
     }
 
