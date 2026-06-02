@@ -16,6 +16,16 @@ import org.springframework.web.bind.annotation.*;
 import com.platform.admin.modules.auth.dto.PasswordUpdateRequest;
 import jakarta.validation.Valid;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.admin.modules.auth.dto.HuaweiLoginRequest;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.UUID;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,6 +40,7 @@ public class AuthController {
     private final LogPermissionResolver logPermissionResolver;
     private final SecurityLogWriter securityLogWriter;
     private final SecurityUtil securityUtil;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AuthController(UserService userService,
                           JwtProvider jwtProvider,
@@ -146,6 +157,63 @@ public class AuthController {
         return result;
     }
 
+        @PostMapping("/huawei-login")
+    public Result<Map<String, Object>> huaweiLogin(
+            @RequestBody HuaweiLoginRequest request,
+            HttpServletRequest httpRequest) {
+
+        String huaweiSubject = resolveHuaweiSubject(request);
+
+        if (huaweiSubject == null || huaweiSubject.isBlank()) {
+            return Result.error(ErrorCode.BAD_REQUEST, "华为登录凭证无效");
+        }
+
+        String username = "huawei_" + sha256(huaweiSubject).substring(0, 16);
+
+        User user = userService.getByUsername(username);
+
+        if (user == null) {
+            user = new User();
+            user.setUsername(username);
+            user.setPasswordHash(UUID.randomUUID().toString());
+            user.setNickname(hasText(request.getNickname()) ? request.getNickname() : "华为用户");
+            user.setAvatar(hasText(request.getAvatar()) ? request.getAvatar() : "");
+            user.setEmail(hasText(request.getEmail()) ? request.getEmail() : "");
+            user.setPhone("");
+            user.setBio("掌上博物馆用户");
+            user.setUserType("USER");
+
+            user = userService.register(user);
+        }
+
+        if ("DISABLED".equals(user.getStatus())) {
+            return Result.error(ErrorCode.UNAUTHORIZED, "账号已被禁用");
+        }
+
+        String ip = ClientIpUtils.resolve(httpRequest);
+        userService.updateLoginInfo(user.getObjectId(), ip);
+
+        String accessToken = jwtProvider.generateToken(user.getObjectId(), user.getUserType());
+        String refreshToken = jwtProvider.generateToken(user.getObjectId(), user.getUserType());
+
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("objectId", user.getObjectId());
+        userInfo.put("username", user.getUsername());
+        userInfo.put("nickname", user.getNickname() == null ? user.getUsername() : user.getNickname());
+        userInfo.put("avatar", user.getAvatar() == null ? "" : user.getAvatar());
+        userInfo.put("bio", user.getBio() == null ? "" : user.getBio());
+        userInfo.put("phone", user.getPhone() == null ? "" : user.getPhone());
+        userInfo.put("email", user.getEmail() == null ? "" : user.getEmail());
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("accessToken", accessToken);
+        data.put("refreshToken", refreshToken);
+        data.put("expiresIn", jwtProvider.getAccessTokenTtlSeconds());
+        data.put("user", userInfo);
+
+        return Result.success(data);
+    }
+
     @PostMapping("/refresh-token")
     public Result<Map<String, Object>> refreshToken(@RequestBody Map<String, String> request) {
         String refreshToken = request.get("refreshToken");
@@ -177,4 +245,91 @@ public class AuthController {
         
         return Result.success(data);
     }
+
+    private String resolveHuaweiSubject(HuaweiLoginRequest request) {
+    if (request == null) {
+        return null;
+    }
+
+    if (hasText(request.getUnionId())) {
+        return "union:" + request.getUnionId().trim();
+    }
+
+    if (hasText(request.getOpenId())) {
+        return "open:" + request.getOpenId().trim();
+    }
+
+    if (hasText(request.getIdToken())) {
+        String subject = parseSubjectFromIdTokenWithoutVerify(request.getIdToken());
+        if (hasText(subject)) {
+            return "idtoken:" + subject;
+        }
+    }
+
+        /*
+        * 注意：
+        * 这里用 authorizationCode 做兜底只适合课程项目联调。
+        * 正式版本不能直接把 authorizationCode 当用户唯一身份，
+        * 因为 authorizationCode 通常是一次性的。
+        * 正式版本应拿 authorizationCode 到华为服务器换取 id_token / openId / unionId。
+        */
+        if (hasText(request.getAuthorizationCode())) {
+            return "code:" + request.getAuthorizationCode().trim();
+        }
+
+        return null;
+    }
+
+    private String parseSubjectFromIdTokenWithoutVerify(String idToken) {
+        try {
+            String[] parts = idToken.split("\\.");
+            if (parts.length < 2) {
+                return null;
+            }
+
+            byte[] payloadBytes = Base64.getUrlDecoder().decode(parts[1]);
+            String payload = new String(payloadBytes, StandardCharsets.UTF_8);
+
+            JsonNode node = objectMapper.readTree(payload);
+
+            if (node.hasNonNull("sub")) {
+                return node.get("sub").asText();
+            }
+
+            if (node.hasNonNull("open_id")) {
+                return node.get("open_id").asText();
+            }
+
+            if (node.hasNonNull("union_id")) {
+                return node.get("union_id").asText();
+            }
+
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String sha256(String raw) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder builder = new StringBuilder();
+            for (byte b : hash) {
+                builder.append(String.format("%02x", b));
+            }
+
+            return builder.toString();
+        } catch (Exception e) {
+            return UUID.nameUUIDFromBytes(raw.getBytes(StandardCharsets.UTF_8))
+                    .toString()
+                    .replace("-", "");
+        }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
 }
