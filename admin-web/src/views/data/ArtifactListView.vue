@@ -457,16 +457,16 @@ async function loadData() {
   try {
     const result = await getRelicList({
       page: pagination.page,
-      pageSize: pagination.pageSize,
+      size: pagination.pageSize,
       keyword: searchForm.keyword,
       period: searchForm.period,
       type: searchForm.type,
       material: searchForm.material,
-      museumId: searchForm.museumId
+      museum: searchForm.museumId
     })
-    tableData.value = result.records.map(item => ({
+    tableData.value = result.items.map(item => ({
       ...item,
-      museumName: getMuseumName(item.museumId)
+      museumName: item.museum || getMuseumName(item.museumId)
     }))
     pagination.total = result.total
   } catch (error: any) {
@@ -490,38 +490,51 @@ function generateMockArtifacts() {
   const periods = ['唐', '宋', '元', '明', '清']
   const types = ['瓷器', '青铜器', '书画', '玉器', '漆器']
   const materials = ['青花瓷', '粉彩', '青铜', '丝绸', '玉石']
-  const museumIds = ['museum1', 'museum2', 'museum3', 'museum4', 'museum5']
+  const museums = [
+    { id: 'museum1', name: '故宫博物院', location: '北京' },
+    { id: 'museum2', name: '上海博物馆', location: '上海' },
+    { id: 'museum3', name: '南京博物院', location: '南京' },
+    { id: 'museum4', name: '陕西历史博物馆', location: '西安' },
+    { id: 'museum5', name: '河南博物院', location: '郑州' }
+  ]
   const titles = [
     '青花缠枝纹瓶', '青铜兽面纹鼎', '清明上河图', '白玉如意', '剔红山水盒',
     '粉彩花鸟纹盘', '青铜编钟', '富春山居图', '翡翠手镯', '描金漆盒',
     '青花人物故事罐', '青铜剑', '千里江山图', '和田玉摆件', '雕漆屏风'
   ]
   
-  return Array.from({ length: 10 }, (_, i) => ({
-    objectId: `artifact_${Date.now()}_${i}`,
-    title: titles[i % titles.length],
-    period: periods[i % periods.length],
-    type: types[i % types.length],
-    material: materials[i % materials.length],
-    description: '这是一件珍贵的文物，具有很高的历史和艺术价值。',
-    dimensions: `${20 + Math.random() * 50} x ${10 + Math.random() * 30} cm`,
-    museumId: museumIds[i % museumIds.length],
-    detailUrl: 'https://example.com/relic/detail',
-    imageUrl: `https://picsum.photos/seed/${i}/200/200`,
-    imagePath: '',
-    creditLine: '博物馆馆藏',
-    accessionNumber: `ACC-${String(i + 1).padStart(6, '0')}`,
-    crawlDate: new Date().toISOString().split('T')[0],
-    createTime: new Date().toISOString(),
-    updateTime: new Date().toISOString(),
-    isDeleted: 0
-  }))
+  return Array.from({ length: 10 }, (_, i) => {
+    const museum = museums[i % museums.length]
+    return {
+      objectId: `artifact_${Date.now()}_${i}`,
+      title: titles[i % titles.length],
+      period: periods[i % periods.length],
+      type: types[i % types.length],
+      material: materials[i % materials.length],
+      description: '这是一件珍贵的文物，具有很高的历史和艺术价值。',
+      dimensions: `${20 + Math.random() * 50} x ${10 + Math.random() * 30} cm`,
+      museumId: museum.id,
+      museum: museum.name,
+      location: museum.location,
+      detailUrl: 'https://example.com/relic/detail',
+      imageUrl: `https://picsum.photos/seed/${i}/200/200`,
+      imageUrls: [`https://picsum.photos/seed/${i}/400/400`, `https://picsum.photos/seed/${i + 10}/400/400`],
+      imagePath: '',
+      creditLine: '博物馆馆藏',
+      accessionNumber: `ACC-${String(i + 1).padStart(6, '0')}`,
+      crawlDate: new Date().toISOString().split('T')[0],
+      createTime: new Date().toISOString(),
+      updateTime: new Date().toISOString(),
+      isDeleted: 0,
+      hot: Math.floor(Math.random() * 1000) + 100
+    }
+  })
 }
 
 async function loadMuseums() {
   try {
-    const result = await getMuseumList({ page: 1, pageSize: 100 })
-    museums.value = result.records
+    const result = await getMuseumList({ page: 1, size: 100 })
+    museums.value = result.items || []
   } catch (error) {
     console.error('Failed to load museums:', error)
     museums.value = [

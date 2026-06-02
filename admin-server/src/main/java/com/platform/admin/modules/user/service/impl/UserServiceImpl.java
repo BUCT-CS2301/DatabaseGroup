@@ -28,6 +28,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
+    public User getUserByUsername(String username) {
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.eq("username", username).eq("is_deleted", 0);
+        return getOne(wrapper);
+    }
+
+    @Override
+    public User getUserByPhone(String phone) {
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.eq("phone", phone).eq("is_deleted", 0);
+        return getOne(wrapper);
+    }
+
+    @Override
+    public User getUserByEmail(String email) {
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.eq("email", email).eq("is_deleted", 0);
+        return getOne(wrapper);
+    }
+
+    @Override
     public User login(String username, String password) {
         User user = getByUsername(username);
         if (user != null && "ENABLED".equals(user.getStatus()) && passwordEncoder.matches(password, user.getPasswordHash())) {
