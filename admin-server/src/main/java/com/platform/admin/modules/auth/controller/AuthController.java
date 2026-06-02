@@ -13,6 +13,9 @@ import com.platform.admin.security.SecurityUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+import com.platform.admin.modules.auth.dto.PasswordUpdateRequest;
+import jakarta.validation.Valid;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -107,8 +110,11 @@ public class AuthController {
             Map<String, Object> data = new HashMap<>();
             data.put("objectId", user.getObjectId());
             data.put("username", user.getUsername());
-            data.put("nickname", user.getNickname());
-            data.put("avatar", user.getAvatar());
+            data.put("nickname", user.getNickname() == null ? user.getUsername() : user.getNickname());
+            data.put("avatar", user.getAvatar() == null ? "" : user.getAvatar());
+            data.put("bio", user.getBio() == null ? "" : user.getBio());
+            data.put("phone", user.getPhone() == null ? "" : user.getPhone());
+            data.put("email", user.getEmail() == null ? "" : user.getEmail());
             data.put("roles", new String[]{user.getUserType()});
             List<String> permissions = new ArrayList<>(List.of(
                     "user:read", "user:write", "role:read", "role:write",
@@ -119,6 +125,25 @@ public class AuthController {
             return Result.success(data);
         }
         return Result.error(ErrorCode.UNAUTHORIZED, "未认证");
+    }
+
+        @PutMapping("/password")
+    public Result<Void> updatePassword(@RequestBody @Valid PasswordUpdateRequest request) {
+        String userId = securityUtil.getCurrentUser().objectId();
+
+        boolean changed = userService.changePassword(
+                userId,
+                request.getOldPassword(),
+                request.getNewPassword()
+        );
+
+        if (!changed) {
+            return Result.error(ErrorCode.BAD_REQUEST, "原密码错误");
+        }
+
+        Result<Void> result = Result.success(null);
+        result.setMessage("密码修改成功");
+        return result;
     }
 
     @PostMapping("/refresh-token")

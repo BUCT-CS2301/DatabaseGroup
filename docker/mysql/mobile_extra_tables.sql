@@ -70,3 +70,23 @@ SET @sql_image_path = (
 PREPARE stmt_image_path FROM @sql_image_path;
 EXECUTE stmt_image_path;
 DEALLOCATE PREPARE stmt_image_path;
+
+-- =========================================================
+-- Mobile profile API required column: user.bio
+-- Used by current-user and edit-profile APIs.
+-- =========================================================
+SET @sql_user_bio = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE user ADD COLUMN bio VARCHAR(500) NULL',
+        'SELECT 1'
+    )
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'user'
+      AND column_name = 'bio'
+);
+
+PREPARE stmt_user_bio FROM @sql_user_bio;
+EXECUTE stmt_user_bio;
+DEALLOCATE PREPARE stmt_user_bio;
