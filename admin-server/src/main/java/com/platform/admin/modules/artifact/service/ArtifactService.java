@@ -5,28 +5,14 @@ import com.platform.admin.modules.artifact.dto.CreateRelicRequest;
 import com.platform.admin.modules.artifact.dto.UpdateRelicRequest;
 import com.platform.admin.modules.artifact.vo.DeleteRelicVO;
 import com.platform.admin.modules.artifact.vo.RelicCsvImportResultVO;
-import com.platform.admin.modules.artifact.vo.RelicFiltersVO;
 import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
-import com.platform.admin.modules.artifact.vo.RelicRelatedVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface ArtifactService {
-    PageResult<RelicVO> pageRelics(
-            long page,
-            long pageSize,
-            String keyword,
-            String museumId,
-            String period,
-            String type,
-            String material,
-            String sort);
-
-    RelicFiltersVO getRelicFilters();
+    PageResult<RelicVO> pageRelics(long page, long pageSize, String keyword, String museumId);
 
     RelicVO getRelicById(String objectId);
-
-    RelicRelatedVO getRelicRelated(String objectId);
 
     RelicVO createRelic(CreateRelicRequest request);
 
@@ -39,7 +25,7 @@ public interface ArtifactService {
      *
      * @param objectId 文物主键，与路径参数一致
      * @param file     multipart 字段 {@code file}
-     * @return 含 {@code fileName}、{@code imageUrl} 的成功视图
+     * @return 含 {@code imagePath}、{@code imageUrl} 的成功视图（与库表一致）
      */
     RelicImageUploadVO uploadRelicImage(String objectId, MultipartFile file);
 

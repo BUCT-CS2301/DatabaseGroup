@@ -42,7 +42,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         user.setStatus("ENABLED");
         if (user.getUserType() == null || user.getUserType().isBlank()) {
-            user.setUserType("USER");
+            user.setUserType("ADMIN");
         }
         user.setIsDeleted(0);
         user.setCreateTime(LocalDateTime.now());

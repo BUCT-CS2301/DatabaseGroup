@@ -61,7 +61,7 @@ export const createUser = (data: SaveUserRequest) => {
 
 export const updateUser = (objectId: string, data: SaveUserRequest) => {
   return request({
-    url: `/v1/users/${objectId}`,
+    url: `/api/v1/users/${objectId}`,
     method: 'put',
     data
   }) as unknown as Promise<ApiResult<UserRecord>>
@@ -69,14 +69,14 @@ export const updateUser = (objectId: string, data: SaveUserRequest) => {
 
 export const deleteUser = (objectId: string) => {
   return request({
-    url: `/v1/users/${objectId}`,
+    url: `/api/v1/users/${objectId}`,
     method: 'delete'
   }) as unknown as Promise<ApiResult<null>>
 }
 
 export const updateUserStatus = (objectId: string, status: string) => {
   return request({
-    url: `/v1/users/${objectId}/status`,
+    url: `/api/v1/users/${objectId}/status`,
     method: 'put',
     data: { status }
   }) as unknown as Promise<ApiResult<{ objectId: string; status: string }>>
@@ -84,7 +84,7 @@ export const updateUserStatus = (objectId: string, status: string) => {
 
 export const updateUserRole = (objectId: string, role: string) => {
   return request({
-    url: `/v1/users/${objectId}/role`,
+    url: `/api/v1/users/${objectId}/role`,
     method: 'put',
     data: { role }
   }) as unknown as Promise<ApiResult<{ objectId: string; roles: string[] }>>
@@ -92,7 +92,7 @@ export const updateUserRole = (objectId: string, role: string) => {
 
 export const resetUserPassword = (objectId: string, password: string) => {
   return request({
-    url: `/v1/users/${objectId}/password`,
+    url: `/api/v1/users/${objectId}/password`,
     method: 'put',
     data: { password }
   }) as unknown as Promise<ApiResult<null>>

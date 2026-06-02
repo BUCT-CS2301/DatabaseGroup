@@ -30,7 +30,7 @@ public class LogPermissionResolver {
                 permissions.add(LogPermissions.READ);
                 permissions.add(LogPermissions.EXPORT);
             }
-            case KNOWLEDGE_SERVICE, AUDITOR -> permissions.add(LogPermissions.READ);
+            case KNOWLEDGE_SERVICE -> permissions.add(LogPermissions.READ);
             default -> {
             }
         }

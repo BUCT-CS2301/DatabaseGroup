@@ -4,7 +4,10 @@ import com.platform.admin.modules.log.entity.SystemLogEntity;
 import com.platform.admin.modules.log.mapper.SystemLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+<<<<<<< HEAD
 import org.springframework.beans.factory.DisposableBean;
+=======
+>>>>>>> d499b06eee3eef7b075af0c6e1375a985c2449dc
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -34,6 +37,7 @@ public class SystemLogWriter implements DisposableBean {
         return thread;
     });
     private final ArrayBlockingQueue<SystemLogEntity> queue = new ArrayBlockingQueue<>(1000);
+    private volatile boolean running = false;
 
     public SystemLogWriter(SystemLogMapper systemLogMapper) {
         this.systemLogMapper = systemLogMapper;
@@ -41,6 +45,10 @@ public class SystemLogWriter implements DisposableBean {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
+<<<<<<< HEAD
+=======
+        running = true;
+>>>>>>> d499b06eee3eef7b075af0c6e1375a985c2449dc
         executor.submit(this::drainQueue);
         log.info("SystemLogWriter started");
     }

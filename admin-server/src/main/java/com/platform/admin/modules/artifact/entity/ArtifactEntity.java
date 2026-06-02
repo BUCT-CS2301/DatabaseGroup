@@ -33,6 +33,12 @@ public class ArtifactEntity {
     @TableField("detail_url")
     private String detailUrl;
 
+    @TableField("image_url")
+    private String imageUrl;
+
+    @TableField("image_path")
+    private String imagePath;
+
     @TableField("credit_line")
     private String creditLine;
 

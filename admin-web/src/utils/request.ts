@@ -1,4 +1,4 @@
-﻿// import axios from 'axios'
+// import axios from 'axios'
 // import type { AxiosInstance, AxiosResponse } from 'axios'
 // import { ElMessage } from 'element-plus'
 // import router from '@/router'
@@ -80,7 +80,11 @@ service.interceptors.response.use(
     return res
   },
   (error) => {
-    ElMessage.error('网络错误，请检查后端是否启动')
+    if (error.response && error.response.status === 404) {
+      console.warn('API endpoint not found:', error.config.url)
+    } else {
+      ElMessage.error('网络错误，请检查后端是否启动')
+    }
     return Promise.reject(error)
   }
 )

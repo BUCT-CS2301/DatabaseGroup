@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -61,11 +60,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public Result<?> handleHttpMediaTypeNotSupportedException(HttpMediaTypeNotSupportedException e) {
         return Result.error(ErrorCode.BAD_REQUEST, "不支持的 Content-Type");
-    }
-
-    @ExceptionHandler(NoResourceFoundException.class)
-    public Result<?> handleNoResourceFoundException(NoResourceFoundException e) {
-        return Result.error(ErrorCode.NOT_FOUND, "资源不存在");
     }
 
     @ExceptionHandler(Exception.class)
