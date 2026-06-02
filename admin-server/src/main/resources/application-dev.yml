@@ -9,13 +9,12 @@ app:
     image-public-base-url: "http://localhost:8080"
 spring:
   datasource:
-    # Java Charset 须用 UTF-8；utf8mb4 仅适用于 MySQL 服务端字符集，不能写在 characterEncoding 里
-    url: jdbc:mysql://localhost:3306/admin_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://39.106.231.119:3306/admin_platform?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: root
     password: 643114514
     driver-class-name: com.mysql.cj.jdbc.Driver
   redis:
-    host: localhost
+    host: 39.106.231.119
     port: 6379
 mybatis-plus:
   configuration:
