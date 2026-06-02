@@ -1,7 +1,6 @@
 package com.platform.admin.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -13,19 +12,13 @@ import java.util.Map;
 
 @Component
 public class JwtProvider {
-
     private final SecretKey key;
     private final long expiration;
 
-    public JwtProvider(
-            @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.access-token-ttl-seconds:7200}") long accessTokenTtlSeconds) {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        if (keyBytes.length < 32) {
-            throw new IllegalStateException("app.jwt.secret must be at least 32 bytes");
-        }
-        this.key = Keys.hmacShaKeyFor(keyBytes);
-        this.expiration = accessTokenTtlSeconds * 1000L;
+    public JwtProvider(@Value("${app.jwt.secret}") String secret,
+                       @Value("${app.jwt.expiration-ms:7200000}") long expiration) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expiration = expiration;
     }
 
     public String generateToken(String userId) {

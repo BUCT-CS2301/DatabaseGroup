@@ -100,7 +100,7 @@ public class UserController {
         String nickname = (String) request.get("nickname");
         String email = (String) request.get("email");
         String phone = (String) request.get("phone");
-        String role = getRequestRole(request, "USER");
+        String role = getRequestRole(request, "ADMIN");
         
         User existing = userService.getByUsername(username);
         if (existing != null) {

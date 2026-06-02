@@ -19,6 +19,7 @@ import com.platform.admin.modules.log.support.LogExportFileRegistry;
 import com.platform.admin.security.AuthUser;
 import com.platform.admin.security.SecurityUtil;
 import com.platform.admin.modules.log.vo.LogExportVO;
+import com.platform.admin.modules.log.vo.LogStatsVO;
 import com.platform.admin.modules.log.vo.OperationLogDetailVO;
 import com.platform.admin.modules.log.vo.OperationLogVO;
 import com.platform.admin.modules.log.vo.SecurityLogVO;
@@ -237,6 +238,18 @@ public class LogServiceImpl implements LogService {
             log.error("event=log_export_fail type={}", type, ex);
             throw new BusinessException(LOG_EXPORT_FAILED_CODE, "日志导出失败");
         }
+    }
+
+    @Override
+    public LogStatsVO getStats() {
+        int operationCount = operationLogMapper.selectCount(null).intValue();
+        int loginCount = systemLogMapper.selectCount(new LambdaQueryWrapper<SystemLogEntity>()
+                .eq(SystemLogEntity::getLevel, "INFO")
+                .like(SystemLogEntity::getMessage, "login")).intValue();
+        int errorCount = systemLogMapper.selectCount(new LambdaQueryWrapper<SystemLogEntity>()
+                .eq(SystemLogEntity::getLevel, "ERROR")).intValue();
+        int securityCount = securityLogMapper.selectCount(null).intValue();
+        return new LogStatsVO(operationCount, loginCount, errorCount, securityCount);
     }
 
     @Override
