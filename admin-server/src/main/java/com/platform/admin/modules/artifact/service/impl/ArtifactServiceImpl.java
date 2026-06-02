@@ -180,9 +180,6 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
         LocalDateTime now = LocalDateTime.now();
         String objectId = UUID.randomUUID().toString();
-        String defaultExt = resolvedDefaultImageExtension();
-        String imagePath = buildRelicImagePath(objectId, defaultExt);
-        String imageUrl = buildRelicImageUrl(imagePath);
         ArtifactEntity entity = ArtifactEntity.builder()
                 .objectId(objectId)
                 .title(request.getTitle())
@@ -193,8 +190,6 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .dimensions(request.getDimensions())
                 .museumId(request.getMuseumId())
                 .detailUrl(request.getDetailUrl())
-                .imageUrl(imageUrl)
-                .imagePath(imagePath)
                 .creditLine(request.getCreditLine())
                 .accessionNumber(request.getAccessionNumber())
                 .crawlDate(request.getCrawlDate())
@@ -273,8 +268,8 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
         String imagePath = "relics-images/" + fileName;
         String imageUrl = buildRelicImageUrl(imagePath);
-        entity.setImagePath(imagePath);
-        entity.setImageUrl(imageUrl);
+        artifactMapper.upsertArtifactImage(fileName, objectId);
+        artifactMapper.deleteArtifactImagesExcept(objectId, fileName);
         entity.setUpdateTime(LocalDateTime.now());
         artifactMapper.updateById(entity);
         log.info(
@@ -288,28 +283,6 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .imagePath(imagePath)
                 .imageUrl(imageUrl)
                 .build();
-    }
-
-    /**
-     * 配置中的默认扩展名，小写、不含点；用于创建文物时的预期文件名。
-     */
-    private String resolvedDefaultImageExtension() {
-        String ext = relicAutoImageProperties.getDefaultImageExtension();
-        if (!StringUtils.hasText(ext)) {
-            return "jpg";
-        }
-        ext = ext.strip().toLowerCase(Locale.ROOT);
-        if (ext.startsWith(".")) {
-            ext = ext.substring(1);
-        }
-        if (!ext.matches("[a-z0-9]{1,10}")) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "app.relics.default-image-extension 配置非法");
-        }
-        return ext;
-    }
-
-    private String buildRelicImagePath(String objectId, String extensionWithoutDot) {
-        return "relics-images/" + objectId + "." + extensionWithoutDot;
     }
 
     /**
@@ -553,12 +526,6 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
         if (request.getDetailUrl() != null) {
             entity.setDetailUrl(request.getDetailUrl());
-        }
-        if (request.getImageUrl() != null) {
-            entity.setImageUrl(request.getImageUrl());
-        }
-        if (request.getImagePath() != null) {
-            entity.setImagePath(request.getImagePath());
         }
         if (request.getCreditLine() != null) {
             entity.setCreditLine(request.getCreditLine());

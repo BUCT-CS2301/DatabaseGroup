@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Delete;
 
 import java.util.List;
 
@@ -107,4 +109,18 @@ public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
 
     @Select("SELECT COUNT(*) FROM user_favorite WHERE artifact_id = #{artifactId}")
     int countFavoritesByArtifactId(@Param("artifactId") String artifactId);
+
+    @Insert("""
+            INSERT INTO artifact_image(file_name, artifact_id)
+            VALUES (#{fileName}, #{artifactId})
+            ON DUPLICATE KEY UPDATE artifact_id = VALUES(artifact_id)
+            """)
+    int upsertArtifactImage(@Param("fileName") String fileName, @Param("artifactId") String artifactId);
+
+    @Delete("""
+            DELETE FROM artifact_image
+            WHERE artifact_id = #{artifactId}
+              AND file_name <> #{keepFileName}
+            """)
+    int deleteArtifactImagesExcept(@Param("artifactId") String artifactId, @Param("keepFileName") String keepFileName);
 }
