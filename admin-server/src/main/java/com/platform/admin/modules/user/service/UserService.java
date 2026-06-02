@@ -5,6 +5,9 @@ import com.platform.admin.modules.user.entity.User;
 
 public interface UserService extends IService<User> {
     User getByUsername(String username);
+    User getUserByUsername(String username);
+    User getUserByPhone(String phone);
+    User getUserByEmail(String email);
     User login(String username, String password);
     User register(User user);
     void updateLoginInfo(Long userId, String ip);

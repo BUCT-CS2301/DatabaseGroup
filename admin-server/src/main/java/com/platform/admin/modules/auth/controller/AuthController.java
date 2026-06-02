@@ -152,4 +152,70 @@ public class AuthController {
         
         return Result.success(data);
     }
+
+    @PostMapping("/register")
+    public Result<Map<String, Object>> register(@RequestBody Map<String, String> request, HttpServletRequest httpRequest) {
+        String username = request.get("username");
+        String password = request.get("password");
+        String phone = request.get("phone");
+        String email = request.get("email");
+        String nickname = request.get("nickname");
+        
+        if (username == null || username.isBlank()) {
+            return Result.error(400, "用户名不能为空");
+        }
+        if (password == null || password.isBlank()) {
+            return Result.error(400, "密码不能为空");
+        }
+        if ((phone == null || phone.isBlank()) && (email == null || email.isBlank())) {
+            return Result.error(400, "手机号和邮箱至少填写一个");
+        }
+        
+        User existingUser = userService.getUserByUsername(username);
+        if (existingUser != null) {
+            return Result.error(409, "用户名已存在");
+        }
+        
+        if (phone != null && !phone.isBlank()) {
+            existingUser = userService.getUserByPhone(phone);
+            if (existingUser != null) {
+                return Result.error(409, "手机号已被注册");
+            }
+        }
+        
+        if (email != null && !email.isBlank()) {
+            existingUser = userService.getUserByEmail(email);
+            if (existingUser != null) {
+                return Result.error(409, "邮箱已被注册");
+            }
+        }
+        
+        User user = new User();
+        user.setUsername(username);
+        user.setPasswordHash(password);
+        user.setPhone(phone);
+        user.setEmail(email);
+        user.setNickname(nickname != null && !nickname.isBlank() ? nickname : username);
+        user.setUserType("USER");
+        user.setStatus("ENABLED");
+        
+        userService.register(user);
+        
+        String ip = ClientIpUtils.resolve(httpRequest);
+        securityLogWriter.writeSecurityAccess(
+                user.getObjectId(), SecurityLogEventType.REGISTER, ip, "/api/v1/auth/register", "POST", "SUCCESS",
+                Map.of("username", user.getUsername())
+        );
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("objectId", user.getObjectId());
+        data.put("username", user.getUsername());
+        data.put("nickname", user.getNickname());
+        data.put("phone", user.getPhone() != null ? user.getPhone() : "");
+        data.put("email", user.getEmail() != null ? user.getEmail() : "");
+        data.put("avatar", user.getAvatar() != null ? user.getAvatar() : "");
+        data.put("createTime", user.getCreateTime());
+        
+        return Result.success(data);
+    }
 }
