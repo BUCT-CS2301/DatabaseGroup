@@ -3,6 +3,7 @@ package com.platform.admin.modules.user.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.platform.admin.common.BusinessException;
 import com.platform.admin.common.ErrorCode;
+import com.platform.admin.common.PublicUrlResolver;
 import com.platform.admin.common.Result;
 import com.platform.admin.modules.user.dto.UserProfileUpdateRequest;
 import com.platform.admin.modules.user.entity.User;
@@ -10,8 +11,8 @@ import com.platform.admin.modules.user.mapper.UserMapper;
 import com.platform.admin.modules.user.vo.AvatarUploadVO;
 import com.platform.admin.modules.user.vo.UserProfileVO;
 import com.platform.admin.security.SecurityUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,21 +40,25 @@ public class UserProfileController {
 
     private final UserMapper userMapper;
     private final SecurityUtil securityUtil;
+    private final PublicUrlResolver publicUrlResolver;
 
-    @Value("${app.relics.image-public-base-url:http://localhost:8080}")
-    private String publicBaseUrl;
-
-    public UserProfileController(UserMapper userMapper, SecurityUtil securityUtil) {
+    public UserProfileController(
+            UserMapper userMapper,
+            SecurityUtil securityUtil,
+            PublicUrlResolver publicUrlResolver) {
         this.userMapper = userMapper;
         this.securityUtil = securityUtil;
+        this.publicUrlResolver = publicUrlResolver;
     }
 
     @GetMapping("/{username}/profile")
-    public Result<UserProfileVO> getUserProfile(@PathVariable String username) {
+    public Result<UserProfileVO> getUserProfile(
+            @PathVariable String username,
+            HttpServletRequest request) {
         User user = requireUserByUsername(username);
 
         String nickname = user.getNickname() == null ? user.getUsername() : user.getNickname();
-        String avatar = user.getAvatar() == null ? "" : user.getAvatar();
+        String avatar = publicUrlResolver.toPublicUrl(user.getAvatar(), request);
         String bio = user.getBio() == null ? "" : user.getBio();
 
         return Result.success(new UserProfileVO(
@@ -65,20 +70,22 @@ public class UserProfileController {
     }
 
     @PutMapping("/me/profile")
-    public Result<UserProfileVO> updateMyProfile(@RequestBody @Valid UserProfileUpdateRequest request) {
+    public Result<UserProfileVO> updateMyProfile(
+            @RequestBody @Valid UserProfileUpdateRequest requestBody,
+            HttpServletRequest request) {
         User user = requireCurrentUser();
 
-        if (request.getNickname() != null) {
-            user.setNickname(request.getNickname().trim());
+        if (requestBody.getNickname() != null) {
+            user.setNickname(requestBody.getNickname().trim());
         }
-        if (request.getBio() != null) {
-            user.setBio(request.getBio().trim());
+        if (requestBody.getBio() != null) {
+            user.setBio(requestBody.getBio().trim());
         }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone().trim());
+        if (requestBody.getPhone() != null) {
+            user.setPhone(requestBody.getPhone().trim());
         }
-        if (request.getEmail() != null) {
-            user.setEmail(request.getEmail().trim());
+        if (requestBody.getEmail() != null) {
+            user.setEmail(requestBody.getEmail().trim());
         }
 
         user.setUpdateTime(LocalDateTime.now());
@@ -87,13 +94,15 @@ public class UserProfileController {
         return Result.success(new UserProfileVO(
                 user.getUsername(),
                 user.getNickname() == null ? user.getUsername() : user.getNickname(),
-                user.getAvatar() == null ? "" : user.getAvatar(),
+                publicUrlResolver.toPublicUrl(user.getAvatar(), request),
                 user.getBio() == null ? "" : user.getBio()
         ));
     }
 
     @PostMapping("/me/avatar")
-    public Result<AvatarUploadVO> uploadMyAvatar(@RequestPart("file") MultipartFile file) throws IOException {
+    public Result<AvatarUploadVO> uploadMyAvatar(
+            @RequestPart("file") MultipartFile file,
+            HttpServletRequest request) throws IOException {
         User user = requireCurrentUser();
 
         if (file == null || file.isEmpty()) {
@@ -101,7 +110,7 @@ public class UserProfileController {
         }
 
         if (file.getSize() > MAX_AVATAR_BYTES) {
-            return Result.error(ErrorCode.PAYLOAD_TOO_LARGE, "头像文件不能超过5MB");
+            return Result.error(ErrorCode.BAD_REQUEST, "头像文件不能超过5MB");
         }
 
         String originalFilename = file.getOriginalFilename();
@@ -119,11 +128,17 @@ public class UserProfileController {
 
         file.transferTo(target.toFile());
 
-        String avatarUrl = normalizeBaseUrl(publicBaseUrl) + "/uploads/avatars/" + filename;
+        /*
+         * 数据库只保存相对路径，不保存 localhost。
+         * 返回给 App 时再通过 PublicUrlResolver 拼接完整可访问 URL。
+         */
+        String avatarPath = "/uploads/avatars/" + filename;
 
-        user.setAvatar(avatarUrl);
+        user.setAvatar(avatarPath);
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
+
+        String avatarUrl = publicUrlResolver.toPublicUrl(avatarPath, request);
 
         Result<AvatarUploadVO> result = Result.success(new AvatarUploadVO(avatarUrl));
         result.setMessage("头像上传成功");
@@ -165,15 +180,5 @@ public class UserProfileController {
                 || "jpeg".equals(ext)
                 || "png".equals(ext)
                 || "webp".equals(ext);
-    }
-
-    private String normalizeBaseUrl(String baseUrl) {
-        if (!StringUtils.hasText(baseUrl)) {
-            return "http://localhost:8080";
-        }
-        if (baseUrl.endsWith("/")) {
-            return baseUrl.substring(0, baseUrl.length() - 1);
-        }
-        return baseUrl;
     }
 }

@@ -1,6 +1,7 @@
 package com.platform.admin.modules.auth.controller;
 
 import com.platform.admin.common.ErrorCode;
+import com.platform.admin.common.PublicUrlResolver;
 import com.platform.admin.common.Result;
 import com.platform.admin.common.log.SecurityLogEventType;
 import com.platform.admin.common.log.SecurityLogWriter;
@@ -41,17 +42,20 @@ public class AuthController {
     private final SecurityLogWriter securityLogWriter;
     private final SecurityUtil securityUtil;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final PublicUrlResolver publicUrlResolver;
 
     public AuthController(UserService userService,
                           JwtProvider jwtProvider,
                           LogPermissionResolver logPermissionResolver,
                           SecurityLogWriter securityLogWriter,
-                          SecurityUtil securityUtil) {
+                          SecurityUtil securityUtil,
+                            PublicUrlResolver publicUrlResolver) {
         this.userService = userService;
         this.jwtProvider = jwtProvider;
         this.logPermissionResolver = logPermissionResolver;
         this.securityLogWriter = securityLogWriter;
         this.securityUtil = securityUtil;
+        this.publicUrlResolver = publicUrlResolver;
     }
 
     @PostMapping("/login")
@@ -114,7 +118,7 @@ public class AuthController {
     }
 
     @GetMapping("/current-user")
-    public Result<Map<String, Object>> getCurrentUser() {
+    public Result<Map<String, Object>> getCurrentUser(HttpServletRequest request) {
         String userId = securityUtil.getCurrentUser().objectId();
         User user = userService.getById(userId);
         if (user != null && !"DISABLED".equals(user.getStatus())) {
@@ -122,7 +126,7 @@ public class AuthController {
             data.put("objectId", user.getObjectId());
             data.put("username", user.getUsername());
             data.put("nickname", user.getNickname() == null ? user.getUsername() : user.getNickname());
-            data.put("avatar", user.getAvatar() == null ? "" : user.getAvatar());
+            data.put("avatar", publicUrlResolver.toPublicUrl(user.getAvatar(), request));
             data.put("bio", user.getBio() == null ? "" : user.getBio());
             data.put("phone", user.getPhone() == null ? "" : user.getPhone());
             data.put("email", user.getEmail() == null ? "" : user.getEmail());
@@ -181,7 +185,7 @@ public class AuthController {
             user.setEmail(hasText(request.getEmail()) ? request.getEmail() : "");
             user.setPhone("");
             user.setBio("掌上博物馆用户");
-            user.setUserType("USER");
+            user.setUserType("MOBILE");
 
             user = userService.register(user);
         }
@@ -200,7 +204,7 @@ public class AuthController {
         userInfo.put("objectId", user.getObjectId());
         userInfo.put("username", user.getUsername());
         userInfo.put("nickname", user.getNickname() == null ? user.getUsername() : user.getNickname());
-        userInfo.put("avatar", user.getAvatar() == null ? "" : user.getAvatar());
+        userInfo.put("avatar", publicUrlResolver.toPublicUrl(user.getAvatar(), httpRequest));
         userInfo.put("bio", user.getBio() == null ? "" : user.getBio());
         userInfo.put("phone", user.getPhone() == null ? "" : user.getPhone());
         userInfo.put("email", user.getEmail() == null ? "" : user.getEmail());
