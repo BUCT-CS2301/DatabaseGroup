@@ -124,4 +124,31 @@ public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
               AND file_name <> #{keepFileName}
             """)
     int deleteArtifactImagesExcept(@Param("artifactId") String artifactId, @Param("keepFileName") String keepFileName);
+
+    @Select("UPDATE artifact SET update_time = #{updateTime} WHERE object_id = #{objectId}")
+    int updateTimeById(@Param("objectId") String objectId, @Param("updateTime") java.time.LocalDateTime updateTime);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM artifact a
+            WHERE a.is_deleted = 0
+              AND (a.title LIKE CONCAT('%', #{keyword}, '%')
+                   OR a.accession_number LIKE CONCAT('%', #{keyword}, '%'))
+            """)
+    long countSearchArtifacts(@Param("keyword") String keyword);
+
+    @Select("""
+            SELECT a.object_id AS objectId, a.title, a.period, a.type, a.material,
+                   a.accession_number AS accessionNumber, m.name AS museum
+            FROM artifact a
+            LEFT JOIN museum m ON m.object_id = a.museum_id
+            WHERE a.is_deleted = 0
+              AND (a.title LIKE CONCAT('%', #{keyword}, '%')
+                   OR a.accession_number LIKE CONCAT('%', #{keyword}, '%'))
+            ORDER BY a.create_time DESC
+            LIMIT #{offset}, #{size}
+            """)
+    List<ArtifactSearchItemVO> searchArtifacts(@Param("keyword") String keyword,
+                                               @Param("offset") long offset,
+                                               @Param("size") long size);
 }

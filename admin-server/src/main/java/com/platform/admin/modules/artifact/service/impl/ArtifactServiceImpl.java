@@ -293,8 +293,7 @@ public class ArtifactServiceImpl implements ArtifactService {
         String imageUrl = buildRelicImageUrl(imagePath);
         artifactMapper.upsertArtifactImage(fileName, objectId);
         artifactMapper.deleteArtifactImagesExcept(objectId, fileName);
-        entity.setUpdateTime(LocalDateTime.now());
-        artifactMapper.updateById(entity);
+        artifactMapper.updateTimeById(objectId, LocalDateTime.now());
         log.info(
                 "event=relic_image_upload_success object_id={} file_ext={} file_size_bytes={}",
                 objectId,
