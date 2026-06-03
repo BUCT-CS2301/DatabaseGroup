@@ -11,7 +11,6 @@ import com.platform.admin.modules.artifact.vo.RelicImageUploadVO;
 import com.platform.admin.modules.artifact.vo.RelicVO;
 import org.springframework.web.multipart.MultipartFile;
 import com.platform.admin.modules.artifact.vo.ArtifactSearchResultVO;
-import com.platform.admin.modules.artifact.vo.ArtifactFilterOptionsVO;
 
 public interface ArtifactService {
     ArtifactPageVO pageRelics(long page, long size, String keyword, String period, String type, String material, String museum, String sort);

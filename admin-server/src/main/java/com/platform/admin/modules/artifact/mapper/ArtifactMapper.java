@@ -130,13 +130,6 @@ public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
     int updateTimeById(@Param("objectId") String objectId, @Param("updateTime") java.time.LocalDateTime updateTime);
 
     @Select("""
-            SELECT COUNT(1)
-            FROM artifact a
-            WHERE a.is_deleted = 0
-              AND (a.title LIKE CONCAT('%', #{keyword}, '%')
-                   OR a.accession_number LIKE CONCAT('%', #{keyword}, '%'))
-            """)
-    @Select("""
         SELECT COUNT(1)
         FROM artifact a
         LEFT JOIN museum m ON m.object_id = a.museum_id
