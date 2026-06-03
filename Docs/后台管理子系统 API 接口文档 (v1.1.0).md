@@ -4,6 +4,7 @@
 
 | 版本   | 日期       | 修订说明 |
 | :----- | :--------- | :------- |
+| v1.1.1 | 2026-06-02 | 对照当前代码实现修订 **§5.6 文物前端接口** 与 **§5.7 用户个人中心接口**：补充 `/api/v1/artifacts` 列表/详情，移除未实现的 `filters`、`interaction-summary`、`related`，并修正用户收藏接口为仅查询。 |
 | v1.1.0 | 2026-06-01 | 新增 **§5.6 文物前端交互接口**（筛选选项、交互摘要、相关推荐、评论点赞等）和 **§5.7 用户个人中心接口**（收藏管理、浏览历史、评论历史、点赞列表等）。 |
 | v1.0.7 | 2026-05-27 | 重写 **§7 日志管理** 为与 **§5.3 博物馆数据**一致的结构化风格（权限、对象模型、分页/详情/导出等）；新增日志下载接口 **GET** `/api/v1/logs/download`，约定导出返回的 `downloadUrl` 指向该 API。 |
 | v1.0.6 | 2026-05-27 | **§7 日志管理**与代码实现对齐：补充分页与参数校验规则、默认值、返回字段模型、错误码；明确日志导出仅支持 `CSV`、`type` 取值为 `OPERATION/SYSTEM/SECURITY`，并补充当前实现返回本地 `file://` 下载地址。 |
@@ -980,77 +981,25 @@ Header 携带 Token。
 **DELETE** `/api/v1/data/ugc/{objectId}`
 *仅支持删除，不可修改用户内容。*
 
-### 5.6 文物前端交互接口
+### 5.6 文物前端接口
 
-#### 5.6.1 文物筛选选项接口
+> 对应后端控制器：`ArtifactPublicController`（`/api/v1/artifacts`）与 `InteractionController`（`/api/v1` 下文物交互相关接口）。
 
-**GET** `/api/v1/artifacts/filters`
+#### 5.6.1 文物分页列表（公共浏览）
 
-获取所有可用的筛选选项（年代、类型、材质、博物馆）。
-
-**权限**：任意有效 Token 即可访问。
-
-**Response (200)**
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "periods": ["唐", "宋", "元", "明", "清"],
-    "types": ["瓷器", "青铜器", "书画", "玉器", "漆器"],
-    "materials": ["青花瓷", "粉彩", "青铜", "丝绸", "玉石"],
-    "museums": ["大英博物馆", "大都会艺术博物馆", "克利夫兰艺术博物馆"]
-  }
-}
-```
-
-#### 5.6.2 文物交互摘要接口
-
-**GET** `/api/v1/artifacts/{objectId}/interaction-summary`
-
-获取文物交互摘要（点赞数、收藏数、评论数等）。
-
-**路径参数**
-| 参数名   | 类型   | 必填 | 说明       |
-| :------- | :----- | :--- | :--------- |
-| objectId | string | 是   | 文物唯一标识 |
-
-**权限**：任意有效 Token 即可访问。
-
-**Response (200)**
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "artifactId": "artifact_001",
-    "likeCount": 156,
-    "favoriteCount": 89,
-    "commentCount": 23,
-    "viewCount": 1234
-  }
-}
-```
-
-#### 5.6.3 相关文物推荐接口
-
-**GET** `/api/v1/artifacts/{objectId}/related`
-
-获取相关文物推荐。
-
-**路径参数**
-| 参数名   | 类型   | 必填 | 说明       |
-| :------- | :----- | :--- | :--------- |
-| objectId | string | 是   | 文物唯一标识 |
+**GET** `/api/v1/artifacts`
 
 **Query 参数**
-| 参数名  | 类型   | 必填 | 说明         |
-| :------ | :----- | :--- | :----------- |
-| count   | number | 否   | 推荐数量，默认 6 |
-
-**权限**：任意有效 Token 即可访问。
+| 参数名   | 类型   | 必填 | 说明 |
+| :------- | :----- | :--- | :--- |
+| page     | number | 否   | 默认 `1`，最小 `1` |
+| size     | number | 否   | 默认 `10`，最小 `1`，最大 `100`（超出按 `100` 截断） |
+| keyword  | string | 否   | 关键字搜索 |
+| period   | string | 否   | 年代筛选 |
+| type     | string | 否   | 类型筛选 |
+| material | string | 否   | 材质筛选 |
+| museum   | string | 否   | 博物馆名称筛选 |
+| sort     | string | 否   | 排序：`hot` / `name` / `period`；非法值返回 `400` |
 
 **Response (200)**
 
@@ -1061,19 +1010,61 @@ Header 携带 Token。
   "data": {
     "items": [
       {
-        "objectId": "artifact_045",
-        "title": "元青花鬼谷子下山图罐",
-        "period": "元",
-        "type": "瓷器",
-        "museum": "大英博物馆",
-        "imageUrl": "https://xxx/thumbnail/artifact_045.jpg"
+        "objectId": "550e8400-e29b-41d4-a716-446655440001",
+        "title": "青铜鼎",
+        "period": "商代晚期",
+        "type": "青铜器",
+        "material": "青铜",
+        "museum": "The Metropolitan Museum of Art",
+        "imageUrl": "https://cdn.example.org/relics-images/default-placeholder.jpg",
+        "popularity": 128
       }
-    ]
+    ],
+    "total": 1,
+    "page": 1,
+    "size": 10
   }
 }
 ```
 
-#### 5.6.4 获取文物评论列表
+#### 5.6.2 文物详情（公共浏览）
+
+**GET** `/api/v1/artifacts/{objectId}`
+
+**路径参数**
+| 参数名   | 类型   | 必填 | 说明 |
+| :------- | :----- | :--- | :--- |
+| objectId | string | 是   | 文物唯一标识 |
+
+**Response (200)**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "objectId": "550e8400-e29b-41d4-a716-446655440001",
+    "title": "青铜鼎",
+    "period": "商代晚期",
+    "type": "青铜器",
+    "material": "青铜",
+    "description": "示例介绍文本。",
+    "dimensions": "高 50cm",
+    "museum": "The Metropolitan Museum of Art",
+    "location": "New York, USA",
+    "detailUrl": "https://museum.example.org/object/12345",
+    "imageUrl": "https://cdn.example.org/relics-images/default-placeholder.jpg",
+    "imageUrls": [
+      "https://cdn.example.org/relics-images/default-placeholder.jpg"
+    ],
+    "creditLine": "Courtesy of Example Museum",
+    "accessionNumber": "1924.123",
+    "popularity": 128
+  }
+}
+```
+
+#### 5.6.3 获取文物评论列表
 
 **GET** `/api/v1/artifacts/{artifactId}/comments`
 
@@ -1127,7 +1118,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.6.5 发布评论/回复
+#### 5.6.4 发布评论/回复
 
 **POST** `/api/v1/artifacts/{artifactId}/comments`
 
@@ -1171,7 +1162,7 @@ Header 携带 Token。
 
 **实现说明**：评论内容自动进行敏感词检测，通过审核的评论直接发布，否则进入人工审核队列。
 
-#### 5.6.6 评论点赞
+#### 5.6.5 评论点赞
 
 **POST** `/api/v1/comments/{commentId}/likes`
 
@@ -1197,7 +1188,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.6.7 文物点赞
+#### 5.6.6 文物点赞
 
 **POST** `/api/v1/artifacts/{artifactId}/likes`
 
@@ -1223,7 +1214,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.6.8 取消文物点赞
+#### 5.6.7 取消文物点赞
 
 **DELETE** `/api/v1/artifacts/{artifactId}/likes`
 
@@ -1283,6 +1274,7 @@ Header 携带 Token。
     "items": [
       {
         "artifactId": "artifact_001",
+        "artifactTitle": "青花云龙纹象耳瓶",
         "groupName": "我的收藏",
         "createTime": "2026-05-01T10:30:00Z"
       }
@@ -1291,68 +1283,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.7.2 添加收藏
-
-**POST** `/api/v1/users/{username}/favorites`
-
-添加文物收藏。
-
-**路径参数**
-| 参数名   | 类型   | 必填 | 说明       |
-| :------- | :----- | :--- | :--------- |
-| username | string | 是   | 用户名     |
-
-**Request Body**
-
-```json
-{
-  "artifactId": "artifact_001",
-  "groupName": "我的收藏"
-}
-```
-
-**权限**：需要有效 Token 认证，且只能操作自己的收藏数据。
-
-**Response (200)**
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "objectId": "favorite_001",
-    "artifactId": "artifact_001",
-    "groupName": "我的收藏",
-    "createTime": "2026-05-01T10:30:00Z"
-  }
-}
-```
-
-#### 5.7.3 取消收藏
-
-**DELETE** `/api/v1/users/{username}/favorites/{artifactId}`
-
-取消文物收藏。
-
-**路径参数**
-| 参数名     | 类型   | 必填 | 说明       |
-| :--------- | :----- | :--- | :--------- |
-| username   | string | 是   | 用户名     |
-| artifactId | string | 是   | 文物ID     |
-
-**权限**：需要有效 Token 认证，且只能操作自己的收藏数据。
-
-**Response (200)**
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": null
-}
-```
-
-#### 5.7.4 获取用户浏览历史
+#### 5.7.2 获取用户浏览历史
 
 **GET** `/api/v1/users/{username}/history`
 
@@ -1391,7 +1322,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.7.5 记录浏览历史
+#### 5.7.3 记录浏览历史
 
 **POST** `/api/v1/users/{username}/history`
 
@@ -1426,7 +1357,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.7.6 获取用户评论历史
+#### 5.7.4 获取用户评论历史
 
 **GET** `/api/v1/users/{username}/comments`
 
@@ -1470,7 +1401,7 @@ Header 携带 Token。
 }
 ```
 
-#### 5.7.7 获取用户点赞列表
+#### 5.7.5 获取用户点赞列表
 
 **GET** `/api/v1/users/{username}/likes`
 

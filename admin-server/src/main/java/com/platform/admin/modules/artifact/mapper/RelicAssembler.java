@@ -21,8 +21,6 @@ public final class RelicAssembler {
                 .dimensions(entity.getDimensions())
                 .museumId(entity.getMuseumId())
                 .detailUrl(entity.getDetailUrl())
-                .imageUrl(entity.getImageUrl())
-                .imagePath(entity.getImagePath())
                 .creditLine(entity.getCreditLine())
                 .accessionNumber(entity.getAccessionNumber())
                 .crawlDate(entity.getCrawlDate())
