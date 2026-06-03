@@ -4,6 +4,7 @@ import com.platform.admin.modules.log.entity.SystemLogEntity;
 import com.platform.admin.modules.log.mapper.SystemLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -19,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * 异步写入 system_log，避免阻塞业务线程。
  */
 @Component
-public class SystemLogWriter {
+public class SystemLogWriter implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(SystemLogWriter.class);
     private static final int MAX_MESSAGE_LENGTH = 4000;
@@ -41,8 +42,8 @@ public class SystemLogWriter {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        running = true;
         executor.submit(this::drainQueue);
+        log.info("SystemLogWriter started");
     }
 
     /**
@@ -86,5 +87,22 @@ public class SystemLogWriter {
             return value;
         }
         return value.substring(0, maxLength);
+    }
+
+    @Override
+    public void destroy() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+                if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    log.warn("SystemLogWriter executor did not terminate");
+                }
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("SystemLogWriter stopped");
     }
 }

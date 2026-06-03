@@ -2,6 +2,7 @@ package com.platform.admin.modules.artifact.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.platform.admin.modules.artifact.entity.ArtifactEntity;
+import com.platform.admin.modules.artifact.vo.ArtifactSearchItemVO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Insert;
@@ -11,7 +12,7 @@ import org.apache.ibatis.annotations.Delete;
 import java.util.List;
 
 /**
- * 文物表 {@code artifact} 数据访问（MyBatis-Plus）。
+ * 文物表 artifact 数据访问。
  */
 @Mapper
 public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
