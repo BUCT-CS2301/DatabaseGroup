@@ -106,6 +106,7 @@ static {
     PERIOD_ORDER_MAP.put("五代十国", 16);
     PERIOD_ORDER_MAP.put("北宋", 17);
     PERIOD_ORDER_MAP.put("南宋", 18);
+    PERIOD_ORDER_MAP.put("宋", 17);
     PERIOD_ORDER_MAP.put("辽", 19);
     PERIOD_ORDER_MAP.put("金", 20);
     PERIOD_ORDER_MAP.put("元", 21);
@@ -170,7 +171,7 @@ static {
     public ArtifactDetailVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
         MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
-        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        List<String> imageUrls = resolveImageUrls(entity);
         String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
 
         return ArtifactDetailVO.builder()
@@ -557,7 +558,7 @@ public ArtifactFilterOptionsVO getArtifactFilterOptions() {
 
     private ArtifactListItemVO toListItemVO(ArtifactEntity entity) {
         MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
-        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        List<String> imageUrls = resolveImageUrls(entity);
         String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
         return ArtifactListItemVO.builder()
                 .objectId(entity.getObjectId())
@@ -600,6 +601,34 @@ public ArtifactFilterOptionsVO getArtifactFilterOptions() {
         log.info("event=artifact_accession_number_fallback objectId={}", objectId);
         return DEFAULT_ACCESSION_NUMBER;
     }
+
+    private List<String> resolveImageUrls(ArtifactEntity entity) {
+    if (entity == null) {
+        return List.of(resolveDefaultImageUrl());
+    }
+
+    if (StringUtils.hasText(entity.getImageUrl())) {
+        return List.of(entity.getImageUrl().trim());
+    }
+
+    if (StringUtils.hasText(entity.getImagePath())) {
+        String imagePath = entity.getImagePath().trim();
+
+        if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+            return List.of(imagePath);
+        }
+
+        if (imagePath.startsWith("/")) {
+            imagePath = imagePath.substring(1);
+        }
+
+        if (imagePath.startsWith("relics-images/")) {
+            return List.of(buildRelicImageUrl(imagePath));
+        }
+    }
+
+    return resolveImageUrls(entity.getObjectId());
+}
 
     private List<String> resolveImageUrls(String artifactId) {
         List<String> fileNames = artifactMapper.selectImageFileNamesByArtifactId(artifactId);
