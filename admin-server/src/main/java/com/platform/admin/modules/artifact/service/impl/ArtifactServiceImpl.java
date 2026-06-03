@@ -38,6 +38,13 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.platform.admin.modules.artifact.vo.ArtifactFilterOptionsVO;
+import com.platform.admin.modules.artifact.vo.MuseumOptionVO;
+import com.platform.admin.modules.artifact.vo.PeriodOptionVO;
+
+import java.util.Comparator;
+import java.util.Objects;
+
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -75,6 +82,40 @@ public class ArtifactServiceImpl implements ArtifactService {
     private static final String DEFAULT_ACCESSION_NUMBER = "-";
     private static final String DEFAULT_LOCATION = "-";
     private static final List<String> SUPPORTED_SORTS = List.of("hot", "name", "period");
+
+    private static final Map<String, Integer> PERIOD_ORDER_MAP = new LinkedHashMap<>();
+
+static {
+    PERIOD_ORDER_MAP.put("良渚文化", 1);
+    PERIOD_ORDER_MAP.put("新石器时代", 1);
+    PERIOD_ORDER_MAP.put("仰韶文化", 1);
+    PERIOD_ORDER_MAP.put("夏", 2);
+    PERIOD_ORDER_MAP.put("商", 3);
+    PERIOD_ORDER_MAP.put("西周", 4);
+    PERIOD_ORDER_MAP.put("春秋", 5);
+    PERIOD_ORDER_MAP.put("战国", 6);
+    PERIOD_ORDER_MAP.put("秦", 7);
+    PERIOD_ORDER_MAP.put("西汉", 8);
+    PERIOD_ORDER_MAP.put("东汉", 9);
+    PERIOD_ORDER_MAP.put("三国", 10);
+    PERIOD_ORDER_MAP.put("西晋", 11);
+    PERIOD_ORDER_MAP.put("东晋", 12);
+    PERIOD_ORDER_MAP.put("南北朝", 13);
+    PERIOD_ORDER_MAP.put("隋", 14);
+    PERIOD_ORDER_MAP.put("唐", 15);
+    PERIOD_ORDER_MAP.put("五代十国", 16);
+    PERIOD_ORDER_MAP.put("北宋", 17);
+    PERIOD_ORDER_MAP.put("南宋", 18);
+    PERIOD_ORDER_MAP.put("宋", 17);
+    PERIOD_ORDER_MAP.put("辽", 19);
+    PERIOD_ORDER_MAP.put("金", 20);
+    PERIOD_ORDER_MAP.put("元", 21);
+    PERIOD_ORDER_MAP.put("明", 22);
+    PERIOD_ORDER_MAP.put("清", 23);
+    PERIOD_ORDER_MAP.put("民国", 24);
+    PERIOD_ORDER_MAP.put("现代", 25);
+}
+
     private static volatile boolean popularityTableMissingLogged = false;
 
     private final SecurityUtil securityUtil;
@@ -130,7 +171,7 @@ public class ArtifactServiceImpl implements ArtifactService {
     public ArtifactDetailVO getRelicById(String objectId) {
         ArtifactEntity entity = getNotDeletedById(objectId);
         MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
-        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        List<String> imageUrls = resolveImageUrls(entity);
         String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
 
         return ArtifactDetailVO.builder()
@@ -152,25 +193,111 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .build();
     }
 
-    @Override
-    public ArtifactSearchResultVO searchArtifacts(String q, long page, long size) {
-        String keyword = q == null ? "" : q.trim();
+@Override
+public ArtifactSearchResultVO searchArtifacts(
+        String q,
+        String keyword,
+        String period,
+        String type,
+        String material,
+        String museum,
+        String sort,
+        long page,
+        long size) {
+    String searchKeyword = resolveSearchKeyword(q, keyword);
+    String safePeriod = trimToNull(period);
+    String safeType = trimToNull(type);
+    String safeMaterial = trimToNull(material);
+    String safeMuseum = trimToNull(museum);
+    String safeSort = trimToNull(sort);
 
-        if (!StringUtils.hasText(keyword)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "参数错误：q 不能为空");
-        }
+    validateSort(safeSort);
 
-        long safePage = page <= 0 ? DEFAULT_PAGE : page;
-        long safeSize = size <= 0 ? 20L : Math.min(size, MAX_PAGE_SIZE);
-        long offset = (safePage - 1) * safeSize;
+    long safePage = page <= 0 ? DEFAULT_PAGE : page;
+    long safeSize = size <= 0 ? 20L : Math.min(size, MAX_PAGE_SIZE);
+    long offset = (safePage - 1) * safeSize;
 
-        long total = artifactMapper.countSearchArtifacts(keyword);
-        List<ArtifactSearchItemVO> items = total == 0
-                ? List.of()
-                : artifactMapper.searchArtifacts(keyword, offset, safeSize);
+    if ("period".equals(safeSort)) {
+        List<ArtifactSearchItemVO> allItems = artifactMapper.searchArtifactsForPeriodSort(
+                searchKeyword,
+                safePeriod,
+                safeType,
+                safeMaterial,
+                safeMuseum
+        );
 
-        return new ArtifactSearchResultVO(total, safePage, safeSize, items);
+        List<ArtifactSearchItemVO> sortedItems = allItems.stream()
+                .sorted(Comparator
+                        .comparingInt((ArtifactSearchItemVO item) -> getPeriodOrder(item.getPeriod()))
+                        .thenComparing(item -> item.getTitle() == null ? "" : item.getTitle())
+                        .thenComparing(item -> item.getObjectId() == null ? "" : item.getObjectId()))
+                .skip(offset)
+                .limit(safeSize)
+                .toList();
+
+        return new ArtifactSearchResultVO(allItems.size(), safePage, safeSize, sortedItems);
     }
+
+    long total = artifactMapper.countSearchArtifacts(
+            searchKeyword,
+            safePeriod,
+            safeType,
+            safeMaterial,
+            safeMuseum
+    );
+
+    List<ArtifactSearchItemVO> items = total == 0
+            ? List.of()
+            : artifactMapper.searchArtifacts(
+                    searchKeyword,
+                    safePeriod,
+                    safeType,
+                    safeMaterial,
+                    safeMuseum,
+                    safeSort,
+                    offset,
+                    safeSize
+            );
+
+    return new ArtifactSearchResultVO(total, safePage, safeSize, items);
+}
+
+    @Override
+public ArtifactFilterOptionsVO getArtifactFilterOptions() {
+    List<PeriodOptionVO> periods = artifactMapper.selectDistinctPeriods().stream()
+            .map(this::toPeriodOption)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toMap(
+                    PeriodOptionVO::getValue,
+                    option -> option,
+                    (left, right) -> left,
+                    LinkedHashMap::new
+            ))
+            .values()
+            .stream()
+            .sorted(Comparator
+                    .comparing(PeriodOptionVO::getOrder)
+                    .thenComparing(PeriodOptionVO::getValue))
+            .toList();
+
+    List<String> types = artifactMapper.selectDistinctTypes();
+    List<String> materials = artifactMapper.selectDistinctMaterials();
+    List<MuseumOptionVO> museums = artifactMapper.selectMuseumOptions();
+
+    List<Map<String, String>> sortOptions = List.of(
+            Map.of("value", "default", "label", "默认"),
+            Map.of("value", "name", "label", "名称"),
+            Map.of("value", "period", "label", "年代")
+    );
+
+    return new ArtifactFilterOptionsVO(
+            periods,
+            types,
+            materials,
+            museums,
+            sortOptions
+    );
+}
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -431,7 +558,7 @@ public class ArtifactServiceImpl implements ArtifactService {
 
     private ArtifactListItemVO toListItemVO(ArtifactEntity entity) {
         MuseumEntity museumEntity = loadMuseum(entity.getMuseumId());
-        List<String> imageUrls = resolveImageUrls(entity.getObjectId());
+        List<String> imageUrls = resolveImageUrls(entity);
         String imageUrl = imageUrls.isEmpty() ? resolveDefaultImageUrl() : imageUrls.get(0);
         return ArtifactListItemVO.builder()
                 .objectId(entity.getObjectId())
@@ -475,6 +602,34 @@ public class ArtifactServiceImpl implements ArtifactService {
         return DEFAULT_ACCESSION_NUMBER;
     }
 
+    private List<String> resolveImageUrls(ArtifactEntity entity) {
+    if (entity == null) {
+        return List.of(resolveDefaultImageUrl());
+    }
+
+    if (StringUtils.hasText(entity.getImageUrl())) {
+        return List.of(entity.getImageUrl().trim());
+    }
+
+    if (StringUtils.hasText(entity.getImagePath())) {
+        String imagePath = entity.getImagePath().trim();
+
+        if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+            return List.of(imagePath);
+        }
+
+        if (imagePath.startsWith("/")) {
+            imagePath = imagePath.substring(1);
+        }
+
+        if (imagePath.startsWith("relics-images/")) {
+            return List.of(buildRelicImageUrl(imagePath));
+        }
+    }
+
+    return resolveImageUrls(entity.getObjectId());
+}
+
     private List<String> resolveImageUrls(String artifactId) {
         List<String> fileNames = artifactMapper.selectImageFileNamesByArtifactId(artifactId);
         if (fileNames == null || fileNames.isEmpty()) {
@@ -506,15 +661,80 @@ public class ArtifactServiceImpl implements ArtifactService {
         }
     }
 
-    private void validateSort(String sort) {
-        if (!StringUtils.hasText(sort)) {
-            return;
-        }
-        if (SUPPORTED_SORTS.contains(sort)) {
-            return;
-        }
-        throw new BusinessException(ErrorCode.BAD_REQUEST, "sort must be one of [hot,name,period]");
+private void validateSort(String sort) {
+    if (!StringUtils.hasText(sort)) {
+        return;
     }
+    if ("default".equals(sort)) {
+        return;
+    }
+    if (SUPPORTED_SORTS.contains(sort)) {
+        return;
+    }
+    throw new BusinessException(ErrorCode.BAD_REQUEST, "sort must be one of [default,hot,name,period]");
+}
+
+    private String resolveSearchKeyword(String q, String keyword) {
+    if (StringUtils.hasText(q)) {
+        return q.trim();
+    }
+    if (StringUtils.hasText(keyword)) {
+        return keyword.trim();
+    }
+    return "";
+}
+
+private String trimToNull(String value) {
+    if (!StringUtils.hasText(value)) {
+        return null;
+    }
+    return value.trim();
+}
+
+private PeriodOptionVO toPeriodOption(String rawPeriod) {
+    String periodName = matchPeriodName(rawPeriod);
+    if (!StringUtils.hasText(periodName)) {
+        return null;
+    }
+    Integer order = PERIOD_ORDER_MAP.get(periodName);
+    if (order == null || order == 999) {
+        return null;
+    }
+    return new PeriodOptionVO(periodName, periodName, order);
+}
+
+private String matchPeriodName(String period) {
+    if (!StringUtils.hasText(period)) {
+        return null;
+    }
+
+    String normalized = period.trim();
+
+    if ("unknown".equalsIgnoreCase(normalized)
+            || normalized.contains("未知")
+            || normalized.contains("不详")) {
+        return null;
+    }
+
+    List<String> keys = new ArrayList<>(PERIOD_ORDER_MAP.keySet());
+    keys.sort((a, b) -> b.length() - a.length());
+
+    for (String key : keys) {
+        if (normalized.contains(key)) {
+            return key;
+        }
+    }
+
+    return null;
+}
+
+private int getPeriodOrder(String period) {
+    String periodName = matchPeriodName(period);
+    if (!StringUtils.hasText(periodName)) {
+        return 999;
+    }
+    return PERIOD_ORDER_MAP.getOrDefault(periodName, 999);
+}
 
     private ArtifactEntity getNotDeletedById(String objectId) {
         ArtifactEntity entity = artifactMapper.selectById(objectId);

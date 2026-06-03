@@ -50,10 +50,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public User login(String username, String password) {
-        User user = getByUsername(username);
-        if (user != null && "ENABLED".equals(user.getStatus()) && passwordEncoder.matches(password, user.getPasswordHash())) {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            return null;
+        }
+
+        String account = username.trim();
+
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.eq("is_deleted", 0)
+                .and(w -> w.eq("username", account)
+                        .or()
+                        .eq("phone", account)
+                        .or()
+                        .eq("email", account));
+
+        User user = getOne(wrapper, false);
+
+        if (user != null
+                && "ENABLED".equals(user.getStatus())
+                && passwordEncoder.matches(password, user.getPasswordHash())) {
             return user;
         }
+
         return null;
     }
 

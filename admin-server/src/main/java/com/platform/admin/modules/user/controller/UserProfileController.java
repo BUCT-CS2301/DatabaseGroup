@@ -24,6 +24,10 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.platform.admin.modules.user.dto.AvatarBase64UploadRequest;
+
+import java.util.Base64;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -175,10 +179,100 @@ public class UserProfileController {
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
     }
 
+    private String resolveImageExtension(String filename, String contentType) {
+    String ext = getExtension(filename);
+
+    if (isAllowedImageExt(ext)) {
+        return ext;
+    }
+
+    if (!StringUtils.hasText(contentType)) {
+        return "";
+    }
+
+    String normalized = contentType.trim().toLowerCase(Locale.ROOT);
+
+    return switch (normalized) {
+        case "image/jpeg", "image/jpg" -> "jpg";
+        case "image/png" -> "png";
+        case "image/webp" -> "webp";
+        default -> "";
+    };
+}
+
     private boolean isAllowedImageExt(String ext) {
         return "jpg".equals(ext)
                 || "jpeg".equals(ext)
                 || "png".equals(ext)
                 || "webp".equals(ext);
     }
+
+        @PostMapping("/me/avatar-base64")
+    public Result<AvatarUploadVO> uploadMyAvatarBase64(
+            @RequestBody @Valid AvatarBase64UploadRequest requestBody,
+            HttpServletRequest request) throws IOException {
+        User user = requireCurrentUser();
+
+        String rawBase64 = requestBody.getBase64();
+        String contentType = requestBody.getContentType();
+        String fileName = requestBody.getFileName();
+
+        if (!StringUtils.hasText(rawBase64)) {
+            return Result.error(ErrorCode.BAD_REQUEST, "base64内容不能为空");
+        }
+
+        // 兼容 data:image/jpeg;base64,xxxx 格式
+        if (rawBase64.contains(",")) {
+            String prefix = rawBase64.substring(0, rawBase64.indexOf(','));
+            rawBase64 = rawBase64.substring(rawBase64.indexOf(',') + 1);
+
+            if (!StringUtils.hasText(contentType)
+                    && prefix.startsWith("data:")
+                    && prefix.contains(";")) {
+                contentType = prefix.substring(5, prefix.indexOf(';'));
+            }
+        }
+
+        String ext = resolveImageExtension(fileName, contentType);
+
+        if (!isAllowedImageExt(ext)) {
+            return Result.error(ErrorCode.BAD_REQUEST, "仅支持jpg、jpeg、png、webp格式");
+        }
+
+        byte[] imageBytes;
+        try {
+            imageBytes = Base64.getDecoder().decode(rawBase64.replaceAll("\\s+", ""));
+        } catch (IllegalArgumentException e) {
+            return Result.error(ErrorCode.BAD_REQUEST, "base64格式不正确");
+        }
+
+        if (imageBytes.length == 0) {
+            return Result.error(ErrorCode.BAD_REQUEST, "图片内容不能为空");
+        }
+
+        if (imageBytes.length > MAX_AVATAR_BYTES) {
+            return Result.error(ErrorCode.BAD_REQUEST, "头像文件不能超过5MB");
+        }
+
+        Path uploadDir = Paths.get("uploads", "avatars").toAbsolutePath().normalize();
+        Files.createDirectories(uploadDir);
+
+        String filename = user.getObjectId() + "-" + UUID.randomUUID() + "." + ext;
+        Path target = uploadDir.resolve(filename).normalize();
+
+        Files.write(target, imageBytes);
+
+        String avatarPath = "/uploads/avatars/" + filename;
+
+        user.setAvatar(avatarPath);
+        user.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        String avatarUrl = publicUrlResolver.toPublicUrl(avatarPath, request);
+
+        Result<AvatarUploadVO> result = Result.success(new AvatarUploadVO(avatarUrl));
+        result.setMessage("头像上传成功");
+        return result;
+    }
+
 }

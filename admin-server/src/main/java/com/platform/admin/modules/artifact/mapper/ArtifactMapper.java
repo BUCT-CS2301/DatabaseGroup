@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Delete;
+import com.platform.admin.modules.artifact.vo.MuseumOptionVO;
 
 import java.util.List;
 
@@ -129,26 +130,215 @@ public interface ArtifactMapper extends BaseMapper<ArtifactEntity> {
     int updateTimeById(@Param("objectId") String objectId, @Param("updateTime") java.time.LocalDateTime updateTime);
 
     @Select("""
-            SELECT COUNT(1)
-            FROM artifact a
-            WHERE a.is_deleted = 0
-              AND (a.title LIKE CONCAT('%', #{keyword}, '%')
-                   OR a.accession_number LIKE CONCAT('%', #{keyword}, '%'))
-            """)
-    long countSearchArtifacts(@Param("keyword") String keyword);
+        SELECT COUNT(1)
+        FROM artifact a
+        LEFT JOIN museum m ON m.object_id = a.museum_id
+        WHERE a.is_deleted = 0
+          AND (
+              #{keyword} IS NULL
+              OR #{keyword} = ''
+              OR a.title LIKE CONCAT('%', #{keyword}, '%')
+              OR a.description LIKE CONCAT('%', #{keyword}, '%')
+              OR a.period LIKE CONCAT('%', #{keyword}, '%')
+              OR a.type LIKE CONCAT('%', #{keyword}, '%')
+              OR a.material LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name_cn LIKE CONCAT('%', #{keyword}, '%')
+              OR a.accession_number LIKE CONCAT('%', #{keyword}, '%')
+          )
+          AND (
+              #{period} IS NULL
+              OR #{period} = ''
+              OR a.period LIKE CONCAT('%', #{period}, '%')
+          )
+          AND (
+              #{type} IS NULL
+              OR #{type} = ''
+              OR a.type = #{type}
+          )
+          AND (
+              #{material} IS NULL
+              OR #{material} = ''
+              OR a.material = #{material}
+          )
+          AND (
+              #{museum} IS NULL
+              OR #{museum} = ''
+              OR m.name = #{museum}
+              OR m.name_cn = #{museum}
+              OR a.museum_id = #{museum}
+          )
+        """)
+long countSearchArtifacts(@Param("keyword") String keyword,
+                          @Param("period") String period,
+                          @Param("type") String type,
+                          @Param("material") String material,
+                          @Param("museum") String museum);
 
-    @Select("""
-            SELECT a.object_id AS objectId, a.title, a.period, a.type, a.material,
-                   a.accession_number AS accessionNumber, m.name AS museum
-            FROM artifact a
-            LEFT JOIN museum m ON m.object_id = a.museum_id
-            WHERE a.is_deleted = 0
-              AND (a.title LIKE CONCAT('%', #{keyword}, '%')
-                   OR a.accession_number LIKE CONCAT('%', #{keyword}, '%'))
-            ORDER BY a.create_time DESC
-            LIMIT #{offset}, #{size}
-            """)
-    List<ArtifactSearchItemVO> searchArtifacts(@Param("keyword") String keyword,
-                                               @Param("offset") long offset,
-                                               @Param("size") long size);
+@Select("""
+        SELECT
+            a.object_id AS objectId,
+            a.title AS title,
+            a.period AS period,
+            a.type AS type,
+            a.material AS material,
+            COALESCE(NULLIF(m.name_cn, ''), NULLIF(m.name, ''), '未知馆藏') AS museum,
+            COALESCE(NULLIF(a.image_url, ''), NULLIF(a.image_path, ''), '') AS imageUrl,
+            (
+                COALESCE((SELECT COUNT(*) FROM user_browse_history h WHERE h.artifact_id = a.object_id), 0)
+                + COALESCE((SELECT COUNT(*) FROM user_favorite f WHERE f.artifact_id = a.object_id), 0) * 5
+                + COALESCE((SELECT COUNT(*) FROM artifact_like l WHERE l.artifact_id = a.object_id), 0) * 3
+            ) AS popularity
+        FROM artifact a
+        LEFT JOIN museum m ON m.object_id = a.museum_id
+        WHERE a.is_deleted = 0
+          AND (
+              #{keyword} IS NULL
+              OR #{keyword} = ''
+              OR a.title LIKE CONCAT('%', #{keyword}, '%')
+              OR a.description LIKE CONCAT('%', #{keyword}, '%')
+              OR a.period LIKE CONCAT('%', #{keyword}, '%')
+              OR a.type LIKE CONCAT('%', #{keyword}, '%')
+              OR a.material LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name_cn LIKE CONCAT('%', #{keyword}, '%')
+              OR a.accession_number LIKE CONCAT('%', #{keyword}, '%')
+          )
+          AND (
+              #{period} IS NULL
+              OR #{period} = ''
+              OR a.period LIKE CONCAT('%', #{period}, '%')
+          )
+          AND (
+              #{type} IS NULL
+              OR #{type} = ''
+              OR a.type = #{type}
+          )
+          AND (
+              #{material} IS NULL
+              OR #{material} = ''
+              OR a.material = #{material}
+          )
+          AND (
+              #{museum} IS NULL
+              OR #{museum} = ''
+              OR m.name = #{museum}
+              OR m.name_cn = #{museum}
+              OR a.museum_id = #{museum}
+          )
+        ORDER BY
+            CASE WHEN #{sort} = 'name' THEN a.title END ASC,
+            CASE WHEN #{sort} = 'hot' THEN (
+                COALESCE((SELECT COUNT(*) FROM user_browse_history h WHERE h.artifact_id = a.object_id), 0)
+                + COALESCE((SELECT COUNT(*) FROM user_favorite f WHERE f.artifact_id = a.object_id), 0) * 5
+                + COALESCE((SELECT COUNT(*) FROM artifact_like l WHERE l.artifact_id = a.object_id), 0) * 3
+            ) END DESC,
+            a.create_time DESC
+        LIMIT #{offset}, #{size}
+        """)
+List<ArtifactSearchItemVO> searchArtifacts(@Param("keyword") String keyword,
+                                           @Param("period") String period,
+                                           @Param("type") String type,
+                                           @Param("material") String material,
+                                           @Param("museum") String museum,
+                                           @Param("sort") String sort,
+                                           @Param("offset") long offset,
+                                           @Param("size") long size);
+
+@Select("""
+        SELECT
+            a.object_id AS objectId,
+            a.title AS title,
+            a.period AS period,
+            a.type AS type,
+            a.material AS material,
+            COALESCE(NULLIF(m.name_cn, ''), NULLIF(m.name, ''), '未知馆藏') AS museum,
+            COALESCE(NULLIF(a.image_url, ''), NULLIF(a.image_path, ''), '') AS imageUrl,
+            (
+                COALESCE((SELECT COUNT(*) FROM user_browse_history h WHERE h.artifact_id = a.object_id), 0)
+                + COALESCE((SELECT COUNT(*) FROM user_favorite f WHERE f.artifact_id = a.object_id), 0) * 5
+                + COALESCE((SELECT COUNT(*) FROM artifact_like l WHERE l.artifact_id = a.object_id), 0) * 3
+            ) AS popularity
+        FROM artifact a
+        LEFT JOIN museum m ON m.object_id = a.museum_id
+        WHERE a.is_deleted = 0
+          AND (
+              #{keyword} IS NULL
+              OR #{keyword} = ''
+              OR a.title LIKE CONCAT('%', #{keyword}, '%')
+              OR a.description LIKE CONCAT('%', #{keyword}, '%')
+              OR a.period LIKE CONCAT('%', #{keyword}, '%')
+              OR a.type LIKE CONCAT('%', #{keyword}, '%')
+              OR a.material LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name LIKE CONCAT('%', #{keyword}, '%')
+              OR m.name_cn LIKE CONCAT('%', #{keyword}, '%')
+              OR a.accession_number LIKE CONCAT('%', #{keyword}, '%')
+          )
+          AND (
+              #{period} IS NULL
+              OR #{period} = ''
+              OR a.period LIKE CONCAT('%', #{period}, '%')
+          )
+          AND (
+              #{type} IS NULL
+              OR #{type} = ''
+              OR a.type = #{type}
+          )
+          AND (
+              #{material} IS NULL
+              OR #{material} = ''
+              OR a.material = #{material}
+          )
+          AND (
+              #{museum} IS NULL
+              OR #{museum} = ''
+              OR m.name = #{museum}
+              OR m.name_cn = #{museum}
+              OR a.museum_id = #{museum}
+          )
+        """)
+List<ArtifactSearchItemVO> searchArtifactsForPeriodSort(@Param("keyword") String keyword,
+                                                        @Param("period") String period,
+                                                        @Param("type") String type,
+                                                        @Param("material") String material,
+                                                        @Param("museum") String museum);
+
+@Select("""
+        SELECT DISTINCT type
+        FROM artifact
+        WHERE is_deleted = 0
+          AND type IS NOT NULL
+          AND type <> ''
+        ORDER BY type
+        """)
+List<String> selectDistinctTypes();
+
+@Select("""
+        SELECT DISTINCT material
+        FROM artifact
+        WHERE is_deleted = 0
+          AND material IS NOT NULL
+          AND material <> ''
+        ORDER BY material
+        """)
+List<String> selectDistinctMaterials();
+
+@Select("""
+        SELECT DISTINCT period
+        FROM artifact
+        WHERE is_deleted = 0
+          AND period IS NOT NULL
+          AND period <> ''
+        """)
+List<String> selectDistinctPeriods();
+
+@Select("""
+        SELECT
+            object_id AS objectId,
+            COALESCE(NULLIF(name_cn, ''), NULLIF(name, ''), '未知馆藏') AS name
+        FROM museum
+        WHERE object_id IS NOT NULL
+        ORDER BY name
+        """)
+List<MuseumOptionVO> selectMuseumOptions();
 }
