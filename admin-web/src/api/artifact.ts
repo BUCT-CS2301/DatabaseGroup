@@ -101,7 +101,7 @@ export interface RelatedArtifact {
   imageUrl: string
 }
 
-export async function getRelicList(params: {
+export function getRelicList(params: {
   page?: number
   size?: number
   keyword?: string
@@ -111,84 +111,115 @@ export async function getRelicList(params: {
   museum?: string
   sort?: 'hot' | 'name' | 'period'
 }): Promise<PageResult<RelicObject>> {
-  const res = await request.get('/v1/artifacts', { params })
-  return res.data
+  return request({
+    url: '/api/v1/artifacts',
+    method: 'get',
+    params
+  })
 }
 
-export async function getRelicDetail(objectId: string): Promise<RelicObject> {
-  const res = await request.get(`/v1/artifacts/${objectId}`)
-  return res.data
+export function getRelicDetail(objectId: string): Promise<RelicObject> {
+  return request({
+    url: `/v1/artifacts/${objectId}`,
+    method: 'get'
+  })
 }
 
-export async function createRelic(data: CreateRelicRequest): Promise<RelicObject> {
-  const res = await request.post('/v1/artifacts', data)
-  return res.data
+export function createRelic(data: CreateRelicRequest): Promise<RelicObject> {
+  return request({
+    url: '/api/v1/artifacts',
+    method: 'post',
+    data
+  })
 }
 
-export async function updateRelic(objectId: string, data: UpdateRelicRequest): Promise<RelicObject> {
-  const res = await request.put(`/v1/artifacts/${objectId}`, data)
-  return res.data
+export function updateRelic(objectId: string, data: UpdateRelicRequest): Promise<RelicObject> {
+  return request({
+    url: `/v1/artifacts/${objectId}`,
+    method: 'put',
+    data
+  })
 }
 
-export async function deleteRelic(objectId: string): Promise<{ objectId: string; isDeleted: number }> {
-  const res = await request.delete(`/v1/artifacts/${objectId}`)
-  return res.data
+export function deleteRelic(objectId: string): Promise<{ objectId: string; isDeleted: number }> {
+  return request({
+    url: `/v1/artifacts/${objectId}`,
+    method: 'delete'
+  })
 }
 
-export async function uploadRelicImage(objectId: string, file: File): Promise<UploadImageResponse> {
+export function uploadRelicImage(objectId: string, file: File): Promise<UploadImageResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await request.post(`/v1/artifacts/${objectId}/image`, formData, {
+  return request({
+    url: `/v1/artifacts/${objectId}/image`,
+    method: 'post',
+    data: formData,
     headers: { 'Content-Type': 'multipart/form-data' }
   })
-  return res.data
 }
 
-export async function importCsv(file: File): Promise<ImportCsvResponse> {
+export function importCsv(file: File): Promise<ImportCsvResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await request.post('/v1/artifacts/import-csv', formData, {
+  return request({
+    url: '/v1/artifacts/import-csv',
+    method: 'post',
+    data: formData,
     headers: { 'Content-Type': 'multipart/form-data' }
   })
-  return res.data
 }
 
-export async function exportCsv(params: {
+export function exportCsv(params: {
   keyword?: string
   museum?: string
 }): Promise<Blob> {
-  const res = await request.get('/v1/artifacts/export-csv', {
+  return request({
+    url: '/api/v1/artifacts/export-csv',
+    method: 'get',
     params,
     responseType: 'blob'
   })
-  return res.data
 }
 
-export async function getMuseumList(params: {
+export function getMuseumList(params: {
   page?: number
   size?: number
   keyword?: string
 }): Promise<PageResult<MuseumObject>> {
-  const res = await request.get('/v1/data/museums', { params })
-  return res.data
+  return request({
+    url: '/api/v1/data/museums',
+    method: 'get',
+    params
+  })
 }
 
-export async function getAllMuseums(): Promise<MuseumObject[]> {
-  const res = await request.get('/v1/data/museums', { params: { page: 1, pageSize: 100 } })
-  return res.data.records
+export function getAllMuseums(): Promise<MuseumObject[]> {
+  return request({
+    url: '/api/v1/data/museums',
+    method: 'get',
+    params: { page: 1, size: 100 }
+  }).then((res: any) => res.items || res.records || [])
 }
 
-export async function getArtifactFilters(): Promise<ArtifactFilters> {
-  const res = await request.get('/v1/artifacts/filters')
-  return res.data
+export function getArtifactFilters(): Promise<ArtifactFilters> {
+  return request({
+    url: '/api/v1/artifacts/filters',
+    method: 'get'
+  })
 }
 
-export async function getInteractionSummary(objectId: string): Promise<InteractionSummary> {
-  const res = await request.get(`/v1/artifacts/${objectId}/interaction-summary`)
-  return res.data
+export function getInteractionSummary(objectId: string): Promise<InteractionSummary> {
+  return request({
+    url: `/api/v1/artifacts/${objectId}/interaction-summary`,
+    method: 'get'
+  })
 }
 
-export async function getRelatedArtifacts(objectId: string, count?: number): Promise<{ items: RelatedArtifact[] }> {
-  const res = await request.get(`/v1/artifacts/${objectId}/related`, { params: { count } })
-  return res.data
+export function getRelatedArtifacts(objectId: string, count?: number): Promise<{ items: RelatedArtifact[] }> {
+  return request({
+    url: `/api/v1/artifacts/${objectId}/related`,
+    method: 'get',
+    params: { count }
+  })
 }

@@ -34,7 +34,7 @@ export function getLogList(params: {
   endTime?: string
 }): Promise<{ data: LogRecord[]; total: number }> {
   return request({
-    url: '/v1/logs/operation',
+    url: '/api/v1/logs/operation',
     method: 'get',
     params
   })
@@ -49,7 +49,7 @@ export function getLogDetail(id: string): Promise<LogRecord> {
 
 export function getLogStats(): Promise<LogStats> {
   return request({
-    url: '/v1/logs/stats',
+    url: '/api/v1/logs/stats',
     method: 'get'
   })
 }
@@ -66,7 +66,7 @@ export function exportLogs(params: {
   endTime?: string
 }): Promise<Blob> {
   return request({
-    url: '/v1/logs/export',
+    url: '/api/v1/logs/export',
     method: 'post',
     data: params,
     responseType: 'blob'

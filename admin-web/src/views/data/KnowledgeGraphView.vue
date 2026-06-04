@@ -4,7 +4,7 @@
     <div class="page-header">
       <h2>知识图谱</h2>
       <div class="header-actions">
-        <el-button type="primary" @click="handleRefresh">
+        <el-button type="primary" @click="handleRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>刷新
         </el-button>
       </div>
@@ -15,28 +15,9 @@
       <el-col :span="16">
         <el-card shadow="hover" class="graph-card">
           <template #header>
-            <div class="card-header">
-              <span>文物关系图谱</span>
-              <el-radio-group v-model="graphLayout" size="small">
-                <el-radio-button label="force">力导向图</el-radio-button>
-                <el-radio-button label="tree">树形图</el-radio-button>
-                <el-radio-button label="radial">放射图</el-radio-button>
-              </el-radio-group>
-            </div>
+            <span>文物关系图谱</span>
           </template>
-          <div class="graph-placeholder">
-            <el-icon class="graph-icon"><Connection /></el-icon>
-            <div class="graph-text">
-              <h3>知识图谱可视化区域</h3>
-              <p>展示文物之间的关系网络，包括：</p>
-              <ul>
-                <li>同一时期文物的关联关系</li>
-                <li>同一博物馆的馆藏关系</li>
-                <li>文物类型分类关系</li>
-                <li>文物材质关联分析</li>
-              </ul>
-            </div>
-          </div>
+          <div ref="graphRef" class="graph-container"></div>
         </el-card>
       </el-col>
 
@@ -66,6 +47,14 @@
               <span class="stat-label">类型节点</span>
               <span class="stat-value">{{ graphStats.typeCount }}</span>
             </div>
+            <div class="stat-item">
+              <span class="stat-label">时期节点</span>
+              <span class="stat-value">{{ graphStats.periodCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">材质节点</span>
+              <span class="stat-value">{{ graphStats.materialCount }}</span>
+            </div>
           </div>
         </el-card>
 
@@ -87,6 +76,14 @@
               <span class="legend-text">类型节点</span>
             </div>
             <div class="legend-item">
+              <span class="legend-dot" style="background-color: #F56C6C;"></span>
+              <span class="legend-text">时期节点</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background-color: #909399;"></span>
+              <span class="legend-text">材质节点</span>
+            </div>
+            <div class="legend-item">
               <span class="legend-line" style="border-top-style: solid;"></span>
               <span class="legend-text">收藏关系</span>
             </div>
@@ -104,11 +101,11 @@
       <template #header>
         <span>节点详情</span>
       </template>
-      <el-table :data="nodeDetails" style="width: 100%">
+      <el-table :data="nodeDetails" style="width: 100%" max-height="400">
         <el-table-column prop="name" label="节点名称" width="200" />
         <el-table-column prop="type" label="节点类型" width="120">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.type }}</el-tag>
+            <el-tag size="small" :type="getTypeTagType(row.type)">{{ getTypeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="relatedCount" label="关联数量" width="120" />
@@ -125,59 +122,279 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Connection } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
+import { getGraphData, type GraphNode, type GraphEdge } from '@/api/knowledge-graph'
 
-// 图谱布局
-const graphLayout = ref('force')
+// 图谱容器
+const graphRef = ref<HTMLElement | null>(null)
+let chartInstance: echarts.ECharts | null = null
+
+// 加载状态
+const loading = ref(false)
+
+// 图谱数据
+const graphData = reactive({
+  nodes: [] as GraphNode[],
+  edges: [] as GraphEdge[]
+})
 
 // 图谱统计
 const graphStats = reactive({
-  nodeCount: 1234,
-  edgeCount: 5678,
-  museumCount: 50,
-  relicCount: 1000,
-  typeCount: 184
+  nodeCount: 0,
+  edgeCount: 0,
+  museumCount: 0,
+  relicCount: 0,
+  typeCount: 0,
+  periodCount: 0,
+  materialCount: 0
 })
 
 // 节点详情列表
-const nodeDetails = ref([
-  {
-    name: '故宫博物院',
-    type: '博物馆',
-    relatedCount: 256,
-    description: '中国最大的古代文化艺术博物馆，馆藏文物丰富'
-  },
-  {
-    name: '大都会艺术博物馆',
-    type: '博物馆',
-    relatedCount: 198,
-    description: '美国最大的艺术博物馆，收藏世界各地珍贵文物'
-  },
-  {
-    name: '青铜器',
-    type: '类型',
-    relatedCount: 432,
-    description: '以青铜为主要材质制作的器物，常见于商周时期'
-  },
-  {
-    name: '商代青铜鼎',
-    type: '文物',
-    relatedCount: 45,
-    description: '商代时期的青铜礼器，具有重要的历史价值'
-  },
-  {
-    name: '陶瓷器',
-    type: '类型',
-    relatedCount: 356,
-    description: '以陶瓷为主要材质的器物，包括瓷器、陶器等'
+const nodeDetails = ref<Array<{
+  name: string
+  type: string
+  relatedCount: number
+  description: string
+}>>([])
+
+// 获取类型标签颜色
+const getTypeTagType = (type: string) => {
+  const map: Record<string, any> = {
+    '博物馆': 'primary',
+    '文物': 'success',
+    '类型': 'warning',
+    '时期': 'danger',
+    '材质': 'info'
   }
-])
+  return map[type] || 'info'
+}
+
+// 获取类型标签文本
+const getTypeLabel = (type: string) => {
+  const map: Record<string, string> = {
+    'museum': '博物馆',
+    'relic': '文物',
+    'type': '类型',
+    'period': '时期',
+    'material': '材质'
+  }
+  return map[type] || type
+}
+
+// 初始化图表
+const initChart = () => {
+  if (!graphRef.value) return
+
+  chartInstance = echarts.init(graphRef.value)
+  updateChart()
+
+  // 监听窗口大小变化
+  window.addEventListener('resize', handleResize)
+}
+
+// 更新图表
+const updateChart = () => {
+  if (!chartInstance) return
+
+  const option: any = {
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        if (params.dataType === 'node') {
+          return `<div style="padding: 8px;">
+            <div style="font-weight: bold; margin-bottom: 4px;">${params.data.name}</div>
+            <div style="color: #909399; font-size: 12px;">类型: ${getTypeLabel(params.data.type)}</div>
+            <div style="color: #909399; font-size: 12px;">关联数: ${params.data.value}</div>
+          </div>`
+        } else if (params.dataType === 'edge') {
+          return `<div style="padding: 8px;">
+            <div style="font-weight: bold;">${params.data.name}</div>
+          </div>`
+        }
+        return ''
+      }
+    },
+    legend: {
+      show: false
+    },
+    series: [
+      {
+        type: 'graph',
+        layout: 'force',
+        data: JSON.parse(JSON.stringify(graphData.nodes)),
+        links: JSON.parse(JSON.stringify(graphData.edges)),
+        categories: [
+          { name: '博物馆' },
+          { name: '文物' },
+          { name: '类型' },
+          { name: '时期' },
+          { name: '材质' }
+        ],
+        roam: true,
+        draggable: true,
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{b}'
+        },
+        lineStyle: {
+          color: '#ccc',
+          curveness: 0.2
+        },
+        emphasis: {
+          focus: 'adjacency',
+          lineStyle: {
+            width: 4
+          }
+        },
+        force: {
+          repulsion: 300,
+          edgeLength: [50, 100]
+        }
+      }
+    ]
+  }
+
+  chartInstance.clear()
+  chartInstance.setOption(option, true)
+}
+
+// 加载图谱数据
+const loadGraphData = async () => {
+  console.log('loadGraphData called')
+  loading.value = true
+  try {
+    console.log('Calling getGraphData...')
+    const res = await getGraphData()
+    console.log('getGraphData response:', res)
+    const result = (res as any).data as { nodes?: GraphNode[], edges?: GraphEdge[], stats?: any }
+
+    graphData.nodes = result.nodes || []
+    graphData.edges = result.edges || []
+
+    // 更新统计数据
+    if (result.stats) {
+      Object.assign(graphStats, result.stats)
+    } else {
+      // 计算统计数据
+      graphStats.nodeCount = graphData.nodes.length
+      graphStats.edgeCount = graphData.edges.length
+      graphStats.museumCount = graphData.nodes.filter(n => n.type === 'museum').length
+      graphStats.relicCount = graphData.nodes.filter(n => n.type === 'relic').length
+      graphStats.typeCount = graphData.nodes.filter(n => n.type === 'type').length
+      graphStats.periodCount = graphData.nodes.filter(n => n.type === 'period').length
+      graphStats.materialCount = graphData.nodes.filter(n => n.type === 'material').length
+    }
+
+    // 更新节点详情列表
+    updateNodeDetails()
+
+    // 更新图表
+    updateChart()
+
+    ElMessage.success('图谱数据加载成功')
+  } catch (error) {
+    console.error('Failed to load graph data:', error)
+    ElMessage.error('图谱数据加载失败，使用模拟数据')
+
+    // 使用模拟数据
+    loadMockData()
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载模拟数据
+const loadMockData = () => {
+  // 模拟节点数据
+  graphData.nodes = [
+    { id: 'm1', name: '故宫博物院', type: 'museum', category: 0, symbolSize: 40, value: 256, itemStyle: { color: '#409EFF' } },
+    { id: 'm2', name: '大都会艺术博物馆', type: 'museum', category: 0, symbolSize: 40, value: 198, itemStyle: { color: '#409EFF' } },
+    { id: 'm3', name: '卢浮宫博物馆', type: 'museum', category: 0, symbolSize: 40, value: 312, itemStyle: { color: '#409EFF' } },
+    { id: 't1', name: '青铜器', type: 'type', category: 2, symbolSize: 30, value: 432, itemStyle: { color: '#E6A23C' } },
+    { id: 't2', name: '陶瓷器', type: 'type', category: 2, symbolSize: 30, value: 356, itemStyle: { color: '#E6A23C' } },
+    { id: 't3', name: '玉器', type: 'type', category: 2, symbolSize: 30, value: 289, itemStyle: { color: '#E6A23C' } },
+    { id: 'p1', name: '商代', type: 'period', category: 3, symbolSize: 25, value: 156, itemStyle: { color: '#F56C6C' } },
+    { id: 'p2', name: '周代', type: 'period', category: 3, symbolSize: 25, value: 203, itemStyle: { color: '#F56C6C' } },
+    { id: 'p3', name: '唐代', type: 'period', category: 3, symbolSize: 25, value: 178, itemStyle: { color: '#F56C6C' } },
+    { id: 'mt1', name: '青铜', type: 'material', category: 4, symbolSize: 20, value: 234, itemStyle: { color: '#909399' } },
+    { id: 'mt2', name: '陶瓷', type: 'material', category: 4, symbolSize: 20, value: 267, itemStyle: { color: '#909399' } },
+    { id: 'r1', name: '商代青铜鼎', type: 'relic', category: 1, symbolSize: 35, value: 45, itemStyle: { color: '#67C23A' } },
+    { id: 'r2', name: '周代青铜簋', type: 'relic', category: 1, symbolSize: 35, value: 38, itemStyle: { color: '#67C23A' } },
+    { id: 'r3', name: '唐代三彩马', type: 'relic', category: 1, symbolSize: 35, value: 52, itemStyle: { color: '#67C23A' } },
+    { id: 'r4', name: '宋代青花瓷', type: 'relic', category: 1, symbolSize: 35, value: 41, itemStyle: { color: '#67C23A' } },
+    { id: 'r5', name: '商代玉璧', type: 'relic', category: 1, symbolSize: 35, value: 33, itemStyle: { color: '#67C23A' } }
+  ]
+
+  // 模拟关系数据
+  graphData.edges = [
+    { source: 'r1', target: 'm1', name: '收藏', lineStyle: { color: '#409EFF', width: 2, type: 'solid' } },
+    { source: 'r2', target: 'm1', name: '收藏', lineStyle: { color: '#409EFF', width: 2, type: 'solid' } },
+    { source: 'r3', target: 'm2', name: '收藏', lineStyle: { color: '#409EFF', width: 2, type: 'solid' } },
+    { source: 'r4', target: 'm3', name: '收藏', lineStyle: { color: '#409EFF', width: 2, type: 'solid' } },
+    { source: 'r5', target: 'm1', name: '收藏', lineStyle: { color: '#409EFF', width: 2, type: 'solid' } },
+    { source: 'r1', target: 't1', name: '类型', lineStyle: { color: '#E6A23C', width: 1, type: 'dashed' } },
+    { source: 'r2', target: 't1', name: '类型', lineStyle: { color: '#E6A23C', width: 1, type: 'dashed' } },
+    { source: 'r3', target: 't2', name: '类型', lineStyle: { color: '#E6A23C', width: 1, type: 'dashed' } },
+    { source: 'r4', target: 't2', name: '类型', lineStyle: { color: '#E6A23C', width: 1, type: 'dashed' } },
+    { source: 'r5', target: 't3', name: '类型', lineStyle: { color: '#E6A23C', width: 1, type: 'dashed' } },
+    { source: 'r1', target: 'p1', name: '时期', lineStyle: { color: '#F56C6C', width: 1, type: 'dashed' } },
+    { source: 'r2', target: 'p2', name: '时期', lineStyle: { color: '#F56C6C', width: 1, type: 'dashed' } },
+    { source: 'r3', target: 'p3', name: '时期', lineStyle: { color: '#F56C6C', width: 1, type: 'dashed' } },
+    { source: 'r1', target: 'mt1', name: '材质', lineStyle: { color: '#909399', width: 1, type: 'dashed' } },
+    { source: 'r2', target: 'mt1', name: '材质', lineStyle: { color: '#909399', width: 1, type: 'dashed' } },
+    { source: 'r3', target: 'mt2', name: '材质', lineStyle: { color: '#909399', width: 1, type: 'dashed' } },
+    { source: 'r4', target: 'mt2', name: '材质', lineStyle: { color: '#909399', width: 1, type: 'dashed' } },
+    { source: 't1', target: 'mt1', name: '关联', lineStyle: { color: '#909399', width: 1, type: 'dashed' } },
+    { source: 't2', target: 'mt2', name: '关联', lineStyle: { color: '#909399', width: 1, type: 'dashed' } }
+  ]
+
+  // 更新统计数据
+  graphStats.nodeCount = graphData.nodes.length
+  graphStats.edgeCount = graphData.edges.length
+  graphStats.museumCount = graphData.nodes.filter(n => n.type === 'museum').length
+  graphStats.relicCount = graphData.nodes.filter(n => n.type === 'relic').length
+  graphStats.typeCount = graphData.nodes.filter(n => n.type === 'type').length
+  graphStats.periodCount = graphData.nodes.filter(n => n.type === 'period').length
+  graphStats.materialCount = graphData.nodes.filter(n => n.type === 'material').length
+
+  // 更新节点详情列表
+  updateNodeDetails()
+
+  // 更新图表
+  updateChart()
+}
+
+// 更新节点详情列表
+const updateNodeDetails = () => {
+  nodeDetails.value = graphData.nodes.map(node => {
+    const relatedCount = graphData.edges.filter(
+      edge => edge.source === node.id || edge.target === node.id
+    ).length
+
+    const descriptions: Record<string, string> = {
+      museum: '收藏和展示珍贵文物的场所',
+      relic: '具有历史、艺术、科学价值的文物',
+      type: '文物的分类类型',
+      period: '文物的历史时期',
+      material: '文物的制作材质'
+    }
+
+    return {
+      name: node.name,
+      type: node.type,
+      relatedCount,
+      description: descriptions[node.type] || '知识图谱节点'
+    }
+  })
+}
 
 // 刷新
 const handleRefresh = () => {
-  ElMessage.success('图谱已刷新')
+  loadGraphData()
 }
 
 // 查看详情
@@ -187,8 +404,40 @@ const handleViewDetail = (row: any) => {
 
 // 高亮节点
 const handleHighlight = (row: any) => {
-  ElMessage.success(`已高亮节点: ${row.name}`)
+  if (!chartInstance) return
+
+  const node = graphData.nodes.find(n => n.name === row.name)
+  if (node) {
+    chartInstance.dispatchAction({
+      type: 'highlight',
+      dataType: 'node',
+      name: node.name
+    })
+    ElMessage.success(`已高亮节点: ${row.name}`)
+  }
 }
+
+// 窗口大小变化处理
+const handleResize = () => {
+  if (chartInstance) {
+    chartInstance.resize()
+  }
+}
+
+// 组件挂载
+onMounted(() => {
+  initChart()
+  loadGraphData()
+})
+
+// 组件卸载
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+})
 </script>
 
 <style scoped>
@@ -221,45 +470,9 @@ const handleHighlight = (row: any) => {
   align-items: center;
 }
 
-.graph-placeholder {
-  height: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background-color: #fafafa;
-  border-radius: 4px;
-}
-
-.graph-icon {
-  font-size: 64px;
-  color: #409EFF;
-  margin-bottom: 20px;
-}
-
-.graph-text {
-  text-align: center;
-  color: #606266;
-}
-
-.graph-text h3 {
-  margin: 0 0 12px;
-  font-size: 18px;
-  color: #303133;
-}
-
-.graph-text p {
-  margin: 0 0 8px;
-}
-
-.graph-text ul {
-  margin: 0;
-  padding-left: 20px;
-  text-align: left;
-}
-
-.graph-text li {
-  margin: 4px 0;
+.graph-container {
+  height: 500px;
+  width: 100%;
 }
 
 .stats-list {

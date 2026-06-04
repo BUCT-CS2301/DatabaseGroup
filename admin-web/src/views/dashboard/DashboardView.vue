@@ -593,11 +593,14 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
-watch(visitPeriod, () => {
+let stopVisitPeriodWatch: Function | null = null
+let stopGrowthPeriodWatch: Function | null = null
+
+stopVisitPeriodWatch = watch(visitPeriod, () => {
   updateVisitChart()
 })
 
-watch(growthPeriod, () => {
+stopGrowthPeriodWatch = watch(growthPeriod, () => {
   updateGrowthChart()
 })
 
@@ -605,6 +608,8 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   visitChart?.dispose()
   growthChart?.dispose()
+  stopVisitPeriodWatch?.()
+  stopGrowthPeriodWatch?.()
 })
 </script>
 

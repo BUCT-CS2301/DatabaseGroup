@@ -62,18 +62,20 @@
               <el-table-column prop="name" label="备份名称" min-width="200" show-overflow-tooltip />
               <el-table-column prop="type" label="备份类型" width="120">
                 <template #default="{ row }">
-                  <el-tag :type="getTypeTagType(row.type)">
+                  <el-tag v-if="row?.type" :type="getTypeTagType(row.type)">
                     {{ getTypeLabel(row.type) }}
                   </el-tag>
+                  <span v-else>-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="size" label="备份大小" width="120" />
               <el-table-column prop="operator" label="操作人" width="120" />
               <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
-                  <el-tag :type="getStatusTagType(row.status)">
+                  <el-tag v-if="row?.status" :type="getStatusTagType(row.status)">
                     {{ getStatusLabel(row.status) }}
                   </el-tag>
+                  <span v-else>-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="createTime" label="创建时间" width="180" />
@@ -127,9 +129,10 @@
               <el-table-column prop="name" label="任务名称" min-width="200" show-overflow-tooltip />
               <el-table-column prop="type" label="备份类型" width="120">
                 <template #default="{ row }">
-                  <el-tag :type="getTypeTagType(row.type)">
+                  <el-tag v-if="row?.type" :type="getTypeTagType(row.type)">
                     {{ getTypeLabel(row.type) }}
                   </el-tag>
+                  <span v-else>-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="cron" label="Cron表达式" width="180" />
@@ -319,7 +322,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Warning } from '@element-plus/icons-vue'
 import type { BackupRecord, BackupTask, BackupPolicy } from '@/api/backup'
@@ -449,8 +452,11 @@ const loadBackupList = async () => {
       type: filterForm.type || undefined,
       status: filterForm.status || undefined
     })
-    backupList.value = res.data
-    paginationRecords.total = res.total
+    // 兼容不同的返回格式
+    const result = res as unknown as { data?: BackupRecord[], items?: BackupRecord[], total?: number }
+    const data = result.data || result.items || []
+    backupList.value = Array.isArray(data) ? data : []
+    paginationRecords.total = result.total || 0
   } catch (error) {
     console.error('Failed to load backup list:', error)
     backupList.value = [
@@ -474,8 +480,11 @@ const loadTaskList = async () => {
       page: paginationTasks.page,
       pageSize: paginationTasks.pageSize
     })
-    taskList.value = res.data
-    paginationTasks.total = res.total
+    // 兼容不同的返回格式
+    const result = res as unknown as { data?: BackupTask[], items?: BackupTask[], total?: number }
+    const data = result.data || result.items || []
+    taskList.value = Array.isArray(data) ? data : []
+    paginationTasks.total = result.total || 0
   } catch (error) {
     console.error('Failed to load task list:', error)
     taskList.value = [
@@ -724,6 +733,19 @@ onMounted(() => {
   loadBackupList()
   loadTaskList()
   loadPolicy()
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  // 关闭所有对话框，避免 DOM 操作错误
+  createDialogVisible.value = false
+  taskDialogVisible.value = false
+  restoreDialogVisible.value = false
+  // 清理所有状态，避免卸载后仍有异步操作尝试更新DOM
+  backupList.value = []
+  taskList.value = []
+  loadingRecords.value = false
+  loadingTasks.value = false
 })
 </script>
 

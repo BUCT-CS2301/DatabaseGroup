@@ -35,7 +35,7 @@ export function getBackupList(params: {
   status?: string
 }): Promise<{ data: BackupRecord[]; total: number }> {
   return request({
-    url: '/v1/backup/records',
+    url: '/api/v1/backup/records',
     method: 'get',
     params
   })
@@ -47,7 +47,7 @@ export function createBackup(data: {
   remark?: string
 }): Promise<{ id: string }> {
   return request({
-    url: '/v1/backup/manual',
+    url: '/api/v1/backup/manual',
     method: 'post',
     data
   })
@@ -80,7 +80,7 @@ export function getBackupTasks(params: {
   pageSize: number
 }): Promise<{ data: BackupTask[]; total: number }> {
   return request({
-    url: '/v1/backup/schedules',
+    url: '/api/v1/backup/schedules',
     method: 'get',
     params
   })
@@ -93,7 +93,7 @@ export function createBackupTask(data: {
   retentionDays: number
 }): Promise<{ id: string }> {
   return request({
-    url: '/v1/backup/schedules',
+    url: '/api/v1/backup/schedules',
     method: 'post',
     data
   })
@@ -122,14 +122,14 @@ export function deleteBackupTask(id: string): Promise<void> {
 
 export function getBackupPolicy(): Promise<BackupPolicy> {
   return request({
-    url: '/v1/backup/storage-info',
+    url: '/api/v1/backup/storage-info',
     method: 'get'
   })
 }
 
 export function updateBackupPolicy(data: BackupPolicy): Promise<void> {
   return request({
-    url: '/v1/backup/storage-info',
+    url: '/api/v1/backup/storage-info',
     method: 'put',
     data
   })

@@ -48,7 +48,7 @@ import router from '@/router'
 import { useUserStore } from '@/store/user'
 
 const service: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: '',
   timeout: 15000
 })
 
@@ -56,8 +56,9 @@ const service: AxiosInstance = axios.create({
 service.interceptors.request.use(
   (config) => {
     const userStore = useUserStore()
-    if (userStore.token) {
-      config.headers.Authorization = `Bearer ${userStore.token}`
+    const token = userStore.token || localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },
@@ -73,7 +74,9 @@ service.interceptors.response.use(
       if (res.code === 401) {
         const userStore = useUserStore()
         userStore.logout()
-        router.push('/login')
+        setTimeout(() => {
+          router.push('/login')
+        }, 1000)
       }
       return Promise.reject(res)
     }
@@ -82,6 +85,8 @@ service.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 404) {
       console.warn('API endpoint not found:', error.config.url)
+    } else if (error.response && error.response.status === 401) {
+      ElMessage.error('登录已过期，请重新登录')
     } else {
       ElMessage.error('网络错误，请检查后端是否启动')
     }

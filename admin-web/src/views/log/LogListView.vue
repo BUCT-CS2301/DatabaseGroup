@@ -153,7 +153,7 @@
     </el-card>
 
     <!-- 日志详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="日志详情" width="700px">
+    <el-dialog v-model="detailDialogVisible" title="日志详情" width="700px" destroy-on-close>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="日志ID">{{ currentLog?.id }}</el-descriptions-item>
         <el-descriptions-item label="日志类型">
@@ -186,7 +186,7 @@
     </el-dialog>
 
     <!-- 导出选择对话框 -->
-    <el-dialog v-model="exportDialogVisible" title="导出日志" width="450px">
+    <el-dialog v-model="exportDialogVisible" title="导出日志" width="450px" destroy-on-close>
       <el-form :model="exportForm" label-width="100px">
         <el-form-item label="导出格式">
           <el-select v-model="exportForm.format" placeholder="请选择导出格式" style="width: 100%;">
@@ -458,6 +458,9 @@ onMounted(() => {
 // 清理
 onUnmounted(() => {
   console.log('LogListView unmounted')
+  // 关闭所有对话框
+  detailDialogVisible.value = false
+  exportDialogVisible.value = false
 })
 </script>
 
