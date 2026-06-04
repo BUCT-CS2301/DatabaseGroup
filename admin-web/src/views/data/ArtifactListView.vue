@@ -112,7 +112,7 @@
       @current-change="handleCurrentChange"
     />
 
-    <el-dialog :title="dialogTitle" :visible.sync="showDialog" width="800px">
+    <el-dialog :title="dialogTitle" v-model="showDialog" width="800px" destroy-on-close>
       <el-form ref="formRef" :model="form" label-width="120px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -200,11 +200,11 @@
       </template>
     </el-dialog>
 
-    <el-dialog title="图片预览" :visible.sync="showImagePreview" width="600px">
+    <el-dialog title="图片预览" v-model="showImagePreview" width="600px" destroy-on-close>
       <el-image :src="previewImageUrl" fit="contain" class="preview-modal-image" />
     </el-dialog>
 
-    <el-dialog title="更换图片" :visible.sync="showImageUploadDialog" width="500px">
+    <el-dialog title="更换图片" v-model="showImageUploadDialog" width="500px" destroy-on-close>
       <div class="image-upload-container">
         <div v-if="currentRelicForImage?.imageUrl" class="current-image">
           <p>当前图片：</p>
@@ -230,7 +230,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog title="CSV导入" :visible.sync="showImportDialog" width="500px">
+    <el-dialog title="CSV导入" v-model="showImportDialog" width="500px" destroy-on-close>
       <div class="import-container">
         <el-upload
           class="upload-demo"
@@ -263,7 +263,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog title="文物详情" :visible.sync="showDetailDialog" width="900px">
+    <el-dialog title="文物详情" v-model="showDetailDialog" width="900px" destroy-on-close>
       <div v-if="currentRelic" class="detail-container">
         <div class="detail-image">
           <el-image v-if="currentRelic.imageUrl" :src="currentRelic.imageUrl" fit="contain" />
@@ -777,9 +777,13 @@ async function handleExport() {
     const a = document.createElement('a')
     a.href = url
     a.download = `relics_export_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(a)
+    if (a?.parentNode !== document.body) {
+      document.body.appendChild(a)
+    }
     a.click()
-    document.body.removeChild(a)
+    if (a?.parentNode === document.body) {
+      document.body.removeChild(a)
+    }
     URL.revokeObjectURL(url)
     ElMessage.success('导出成功')
   } catch (error) {

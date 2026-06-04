@@ -154,7 +154,7 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="rejectVisible" :title="rejectMode === 'batch' ? '批量驳回' : '驳回内容'" width="500px">
+    <el-dialog v-model="rejectVisible" :title="rejectMode === 'batch' ? '批量驳回' : '驳回内容'" width="500px" destroy-on-close>
       <el-form ref="rejectFormRef" :model="rejectForm" :rules="rejectRules" label-width="86px">
         <el-form-item label="驳回原因" prop="reason">
           <el-input
@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close, Refresh, Search, View } from '@element-plus/icons-vue'
@@ -531,6 +531,11 @@ async function confirmReject() {
 
 onMounted(() => {
   loadData()
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  rejectVisible.value = false
 })
 </script>
 

@@ -95,7 +95,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="editingUser ? '编辑用户' : '新增用户'" width="560px">
+    <el-dialog v-model="dialogVisible" :title="editingUser ? '编辑用户' : '新增用户'" width="560px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" :disabled="Boolean(editingUser)" placeholder="请输入用户名" />
@@ -129,7 +129,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="roleDialogVisible" title="修改用户角色" width="460px">
+    <el-dialog v-model="roleDialogVisible" title="修改用户角色" width="460px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="用户">
           <el-input :model-value="selectedUser?.username" disabled />
@@ -151,7 +151,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="passwordDialogVisible" title="重置用户密码" width="460px">
+    <el-dialog v-model="passwordDialogVisible" title="重置用户密码" width="460px" destroy-on-close>
       <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="90px">
         <el-form-item label="用户">
           <el-input :model-value="selectedUser?.username" disabled />
@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Key, Plus, Refresh, Search, SwitchButton, UserFilled } from '@element-plus/icons-vue'
@@ -410,6 +410,13 @@ async function removeUser(row: UserRecord) {
 onMounted(async () => {
   await loadRoles()
   loadUsers()
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  dialogVisible.value = false
+  roleDialogVisible.value = false
+  passwordDialogVisible.value = false
 })
 </script>
 

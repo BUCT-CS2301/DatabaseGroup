@@ -28,7 +28,7 @@ export interface ApiResponse<T = any> {
 
 export const loginApi = (data: LoginRequest) => {
   return request({
-    url: '/v1/auth/login',
+    url: '/api/v1/auth/login',
     method: 'post',
     data
   }) as unknown as Promise<ApiResponse<LoginResponse>>
@@ -36,14 +36,14 @@ export const loginApi = (data: LoginRequest) => {
 
 export const getCurrentUserApi = () => {
   return request({
-    url: '/v1/auth/current-user',
+    url: '/api/v1/auth/current-user',
     method: 'get'
   }) as unknown as Promise<ApiResponse<CurrentUser>>
 }
 
 export const logoutApi = () => {
   return request({
-    url: '/v1/auth/logout',
+    url: '/api/v1/auth/logout',
     method: 'post'
   }) as unknown as Promise<ApiResponse<null>>
 }

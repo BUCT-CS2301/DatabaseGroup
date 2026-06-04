@@ -45,7 +45,7 @@ export interface ApiResult<T> {
 
 export const getUserList = (params: UserListParams) => {
   return request({
-    url: '/v1/users',
+    url: '/api/v1/users',
     method: 'get',
     params
   }) as unknown as Promise<ApiResult<UserListResult>>
@@ -53,7 +53,7 @@ export const getUserList = (params: UserListParams) => {
 
 export const createUser = (data: SaveUserRequest) => {
   return request({
-    url: '/v1/users',
+    url: '/api/v1/users',
     method: 'post',
     data
   }) as unknown as Promise<ApiResult<UserRecord>>

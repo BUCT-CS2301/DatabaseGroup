@@ -80,7 +80,7 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" title="新增自定义角色" width="620px">
+    <el-dialog v-model="dialogVisible" title="新增自定义角色" width="620px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="form.roleName" placeholder="例如：数据维护员" />
@@ -137,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
@@ -266,6 +266,12 @@ async function loadRoleUsers() {
 onMounted(async () => {
   await loadPermissions()
   loadRoles()
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  dialogVisible.value = false
+  usersDrawerVisible.value = false
 })
 </script>
 
